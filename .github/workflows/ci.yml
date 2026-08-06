@@ -14,7 +14,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.25.6"
+  # Menutup GO-2026-4971 dkk. Naikkan bersama go.mod, jangan salah satu saja —
+  # govulncheck di pre-push akan menolak push kalau keduanya berbeda.
+  GO_VERSION: "1.25.12"
 
 jobs:
   go:

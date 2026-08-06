@@ -7,7 +7,7 @@ Anda sendiri, enam bulan lagi, di mesin yang berbeda.
 
 | Alat | Versi | Catatan |
 |---|---|---|
-| Go | 1.25.6 | [ADR-0001](adr/0001-stack-react-go-postgresql.md) menyebut 1.24; versi minor Go bukan keputusan yang butuh ADR |
+| Go | 1.25.12 | [ADR-0001](adr/0001-stack-react-go-postgresql.md) menyebut 1.24; versi minor Go bukan keputusan yang butuh ADR. Patch ini menutup 9 kerentanan pustaka standar yang ditemukan `govulncheck` — lihat `go.mod` dan `GO_VERSION` di `ci.yml`, keduanya harus naik bersamaan |
 | Node | 24.x | |
 | pnpm | 10.x | Package manager frontend. Diaktifkan lewat `corepack enable` |
 | PostgreSQL | 18 | [ADR-0007](adr/0007-postgresql-18.md) |
