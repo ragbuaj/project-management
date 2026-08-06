@@ -141,7 +141,7 @@ Ditulis eksplisit supaya tidak terlihat seperti kelalaian.
 | Share link yang bocor memberi akses baca ke satu board | Itu memang fungsinya. Dimitigasi dengan kedaluwarsa dan pencabutan, bukan dihilangkan |
 | Tidak ada 2FA | Instalasi pribadi dengan pengguna yang dikenal. Kalau nanti ada rekan di luar lingkaran dekat, ini harus ditinjau ulang |
 | Tidak ada enkripsi at-rest di tingkat kolom selain kredensial VCS | Disk VPS terenkripsi; ancaman akses fisik tidak dimodelkan |
-| Serangan rantai pasok pada dependensi | Dimitigasi (`govulncheck`, `npm audit`, lockfile di-commit), tidak dicegah |
+| Serangan rantai pasok pada dependensi | Dimitigasi (`govulncheck`, `pnpm audit`, lockfile di-commit), tidak dicegah |
 | Owner pada akhirnya bisa membaca project mana pun | Hanya lewat langkah yang tercatat dan memberi notifikasi. Perbedaan antara akses darurat dan akses diam-diam |
 
 ## Kapan dokumen ini ditinjau ulang

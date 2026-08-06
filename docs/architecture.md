@@ -48,7 +48,7 @@ graph TB
             worker["<b>worker</b><br/>relay outbox, job terjadwal,<br/>automation, pengirim notifikasi"]
         end
 
-        pg[("<b>PostgreSQL 17</b><br/>data, activity_events,<br/>outbox, antrean job")]
+        pg[("<b>PostgreSQL 18</b><br/>data, activity_events,<br/>outbox, antrean job")]
         redis[("<b>Redis 7</b><br/>pub/sub fanout,<br/>rate limit, cache chart")]
     end
 
@@ -97,44 +97,64 @@ backend/
 ├── internal/
 │   ├── config/                 # muat & validasi env, gagal cepat saat start
 │   ├── postgres/               # pool pgx, transaksi, health
-│   ├── store/                  # kode hasil generate sqlc
-│   ├── fracdex/                # fractional index (ADR-0003)
-│   ├── authn/                  # sesi, password, API token, share link
+│   ├── httpx/                  # router, middleware, bentuk error, request ID
 │   ├── authz/                  # policy — satu-satunya tempat izin diputuskan
+│   ├── fracdex/                # fractional index (ADR-0003)
 │   ├── events/                 # Publisher/Subscriber, implementasi outbox
 │   ├── realtime/               # hub WebSocket, fanout via Redis
 │   ├── jobs/                   # definisi & worker river
-│   ├── project/                # project, board, column, status, label
-│   ├── card/                   # card, checklist, link, comment
-│   ├── sprint/                 # sprint, epic, backlog
-│   ├── timelog/                # F1-F3
-│   ├── automation/             # E2, E5 — mesin aturan & transisi
-│   ├── search/                 # query filter, full-text (C5, C6, C7)
-│   ├── report/                 # D5-D7, F3, F4
-│   ├── vcs/                    # Provider + github/ + gitlab/ (ADR-0006)
-│   ├── telegram/               # H3
-│   ├── httpx/                  # router, middleware, bentuk error, request ID
-│   └── api/                    # handler per sumber daya
+│   └── modules/
+│       ├── identity/           # user, session, invitation, password reset
+│       ├── project/            # project, member, board, column, status, label
+│       ├── card/               # card, checklist, link, comment
+│       ├── sprint/             # sprint, epic, backlog
+│       ├── timelog/            # F1-F3
+│       ├── automation/         # E2, E5 — mesin aturan & transisi
+│       ├── search/             # query filter, full-text (C5, C6, C7)
+│       ├── report/             # D5-D7, F3, F4
+│       ├── vcs/                # Provider + github/ + gitlab/ (ADR-0006)
+│       └── telegram/           # H3
 ├── db/
-│   ├── migrations/             # goose, maju saja
-│   └── queries/                # sumber sqlc
+│   └── migrations/             # goose, maju saja — terpusat, tidak per modul
 └── web/                        # hasil build SPA, di-embed
+```
+
+Setiap modul di `internal/modules/` punya bentuk yang sama — lihat
+[ADR-0008](adr/0008-struktur-modular-backend.md):
+
+```
+modules/<modul>/
+├── domain/                     # entitas + sentinel error. Tidak mengimpor apa pun dari repo ini
+├── repository/                 # sqlc hasil generate + akses data
+│   └── queries/                # sumber .sql milik modul ini
+├── service/                    # logika bisnis, batas transaksi
+├── handler/                    # decode → validasi → panggil service → encode
+└── route/                      # pendaftaran route + middleware khusus modul
 ```
 
 Aturan yang berlaku di struktur ini:
 
-- **Paket domain (`project`, `card`, `sprint`, …) tidak mengimpor `internal/api`
-  maupun `internal/httpx`.** Arah ketergantungan satu arah: handler → domain →
-  store.
+- **Arah ketergantungan satu arah:** `route → handler → service → repository →
+  domain`. Tidak ada panah balik. `domain` tidak mengimpor paket lain di repo
+  ini.
+- **Modul tidak query tabel milik modul lain.** Pembacaan lintas modul lewat
+  service pemiliknya. Ini yang membuat batas modul berarti sesuatu, dan yang
+  mencegah `sqlc` melahirkan tipe `Card` di enam paket berbeda.
+- **Alias impor lintas modul berpola `<modul><lapisan>`** — `carddom`,
+  `cardrepo`, `cardsvc`, `cardhttp`, `cardroute` — ditegakkan linter `importas`
+  di `.golangci.yml`. Konvensi yang hanya tertulis akan menyimpang pada modul
+  kelima.
 - **Tidak ada paket `utils`, `helpers`, `common`, atau `shared`.** Dilarang oleh
   `rules/20-go.md` dan oleh [glossary.md](glossary.md).
 - **Interface didefinisikan di sisi konsumen.** `events.Publisher` hidup di
-  paket yang memakainya, bukan di paket yang mengimplementasikannya.
-- **Batas transaksi ada di layer service (paket domain), bukan di store.** Satu
-  unit bisnis, satu transaksi.
-- **Semua izin diputuskan di `internal/authz`.** Handler bertanya, tidak
-  memutuskan. Ini yang membuat [authorization.md](authorization.md) bisa diuji
-  sebagai satu kesatuan, bukan tersebar di 80 handler.
+  paket yang memakainya, bukan di paket yang mengimplementasikannya. Begitu pula
+  interface pembaca keanggotaan yang dipakai `authz`.
+- **Batas transaksi ada di `service`, bukan di `repository`.** Satu unit bisnis,
+  satu transaksi.
+- **Semua izin diputuskan di `internal/authz`**, di luar modul. Handler
+  bertanya, tidak memutuskan. Ini yang membuat
+  [authorization.md](authorization.md) bisa diuji sebagai satu kesatuan, bukan
+  tersebar di puluhan modul.
 
 ### Alur satu permintaan yang mengubah data
 
@@ -242,9 +262,10 @@ yang berbeda.
 | Pertanyaan | Jawaban |
 |---|---|
 | Siapa pemilik tabel? | Satu backend, satu database. Tidak ada kepemilikan terbagi |
-| Siapa otoritas autentikasi? | `internal/authn`. Tidak ada yang lain |
-| Di mana izin diputuskan? | `internal/authz`. Handler bertanya, tidak memutuskan |
-| Di mana logika bisnis? | Paket domain. Handler hanya decode → validasi → panggil → encode |
+| Siapa otoritas autentikasi? | `internal/modules/identity`. Tidak ada yang lain |
+| Di mana izin diputuskan? | `internal/authz`, di luar modul. Handler bertanya, tidak memutuskan |
+| Di mana logika bisnis? | `modules/<m>/service`. Handler hanya decode → validasi → panggil → encode |
+| Bolehkah satu modul query tabel modul lain? | Tidak. Lewat service pemiliknya ([ADR-0008](adr/0008-struktur-modular-backend.md)) |
 | Siapa yang memanggil layanan eksternal? | `worker`, selalu, setelah commit |
 | Di mana penamaan JSON dikonversi? | `lib/api` di frontend, satu tempat |
 | Apa sumber kebenaran kontrak API? | `docs/api/openapi.yaml`. Tipe TS digenerate darinya, tidak pernah ditulis tangan |

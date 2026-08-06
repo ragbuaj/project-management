@@ -3,6 +3,19 @@
 Dokumen yang paling sering dibutuhkan orang baru di hari pertama — termasuk
 Anda sendiri, enam bulan lagi, di mesin yang berbeda.
 
+## Toolchain
+
+| Alat | Versi | Catatan |
+|---|---|---|
+| Go | 1.25.6 | [ADR-0001](adr/0001-stack-react-go-postgresql.md) menyebut 1.24; versi minor Go bukan keputusan yang butuh ADR |
+| Node | 24.x | |
+| pnpm | 10.x | Package manager frontend. Diaktifkan lewat `corepack enable` |
+| PostgreSQL | 18 | [ADR-0007](adr/0007-postgresql-18.md) |
+| Redis | 7 | |
+| goose | 3.27+ | Migration, maju saja |
+| sqlc | 1.x | Satu entri per modul ([ADR-0008](adr/0008-struktur-modular-backend.md)) |
+| golangci-lint · gitleaks · squawk · lefthook | terbaru | Gerbang otomatis, lihat `references/quality-gates.md` |
+
 ## Daftar lingkungan
 
 | Lingkungan | Tujuan | Data | Di mana |
@@ -106,7 +119,7 @@ cd backend && go run ./cmd/api
 ```
 
 ```bash
-cd frontend && npm install && npm run dev
+cd frontend && pnpm install && pnpm dev
 ```
 
 Seed berukuran penuh untuk uji performa — dipakai membuktikan angka di
