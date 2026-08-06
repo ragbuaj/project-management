@@ -1,5 +1,8 @@
 name: CI
 
+# Hanya job yang relevan untuk setiap PR. Yang disaring per-path punya berkas
+# workflow sendiri — api-contract.yml dan migrations.yml — supaya runner-nya
+# tidak dinyalakan sama sekali saat berkasnya tidak tersentuh.
 on:
   push:
     branches: [main]
@@ -12,11 +15,6 @@ permissions:
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  # Menutup GO-2026-4971 dkk. Naikkan bersama go.mod, jangan salah satu saja —
-  # govulncheck di pre-push akan menolak push kalau keduanya berbeda.
-  GO_VERSION: "1.25.12"
 
 jobs:
   go:
@@ -49,7 +47,10 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: ${{ env.GO_VERSION }}
+          # go.mod sebagai satu-satunya sumber versi Go. Menuliskan angkanya
+          # lagi di sini hanya melahirkan dua nilai yang harus naik bersamaan,
+          # dan suatu hari salah satunya tidak ikut.
+          go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
       - name: go vet
@@ -79,77 +80,10 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: backend/go.mod
 
       - name: Pasang gitleaks
         run: go install github.com/zricethezav/gitleaks/v8@latest
 
       - name: Pindai
         run: gitleaks git --no-banner
-
-  migration-lint:
-    name: Migration — squawk
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Cari migration yang ada
-        id: cari
-        run: |
-          if compgen -G "backend/db/migrations/*.sql" > /dev/null; then
-            echo "ada=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ada=false" >> "$GITHUB_OUTPUT"
-            echo "Belum ada migration — dilewati."
-          fi
-        shell: bash
-
-      - uses: pnpm/action-setup@v4
-        if: steps.cari.outputs.ada == 'true'
-        with:
-          version: 10.30.3
-
-      - name: squawk
-        if: steps.cari.outputs.ada == 'true'
-        run: pnpm dlx squawk-cli --pg-version=18.0 backend/db/migrations/*.sql
-
-  api-contract:
-    name: Kontrak API — oasdiff
-    runs-on: ubuntu-latest
-    # Hanya berjalan saat spec tersentuh. Tanpa ini, job berjalan di setiap PR
-    # dan orang berhenti membaca hasilnya.
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Apakah spec berubah?
-        id: ubah
-        run: |
-          git fetch origin "${{ github.base_ref }}" --depth=1
-          if git diff --quiet "origin/${{ github.base_ref }}" -- docs/api/openapi.yaml; then
-            echo "ada=false" >> "$GITHUB_OUTPUT"
-            echo "Spec tidak berubah — dilewati."
-          else
-            echo "ada=true" >> "$GITHUB_OUTPUT"
-          fi
-        shell: bash
-
-      - uses: actions/setup-go@v6
-        if: steps.ubah.outputs.ada == 'true'
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Pasang oasdiff
-        if: steps.ubah.outputs.ada == 'true'
-        run: go install github.com/oasdiff/oasdiff@latest
-
-      # Spec pembanding diambil dari branch tujuan, bukan berkas lokal.
-      # Exit code 1 kalau ada perubahan yang merusak klien lama.
-      - name: Periksa perubahan yang merusak
-        if: steps.ubah.outputs.ada == 'true'
-        run: |
-          git show "origin/${{ github.base_ref }}:docs/api/openapi.yaml" > /tmp/openapi-base.yaml
-          oasdiff breaking /tmp/openapi-base.yaml docs/api/openapi.yaml
-        shell: bash

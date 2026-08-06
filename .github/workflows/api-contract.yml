@@ -1,0 +1,46 @@
+name: Kontrak API
+
+# Penyaringan ada di level workflow, bukan sebagai langkah penjaga di dalam job.
+# Dengan penjaga di dalam job, runner tetap dinyalakan dan seluruh action tetap
+# diunduh hanya untuk menemukan bahwa spec tidak berubah — beberapa menit per
+# PR, dan satu kesempatan lagi mengenai gangguan layanan GitHub. Dengan
+# penyaringan di sini, job-nya sama sekali tidak diantrekan.
+on:
+  pull_request:
+    paths:
+      - "docs/api/openapi.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  oasdiff:
+    name: oasdiff — perubahan yang merusak
+    runs-on: ubuntu-latest
+    steps:
+      # Riwayat penuh: pembandingnya diambil dari branch tujuan.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          # go.mod sebagai satu-satunya sumber versi Go. Menuliskannya lagi di
+          # sini hanya melahirkan dua angka yang harus naik bersamaan, dan
+          # suatu hari salah satunya tidak ikut.
+          go-version-file: backend/go.mod
+
+      - name: Pasang oasdiff
+        run: go install github.com/oasdiff/oasdiff@latest
+
+      # Exit code 1 kalau ada perubahan yang merusak klien lama.
+      - name: Bandingkan dengan branch tujuan
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          git show "origin/${{ github.base_ref }}:docs/api/openapi.yaml" > /tmp/openapi-base.yaml
+          oasdiff breaking /tmp/openapi-base.yaml docs/api/openapi.yaml
+        shell: bash

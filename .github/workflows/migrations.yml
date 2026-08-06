@@ -1,0 +1,32 @@
+name: Migration
+
+# Sama seperti kontrak API: disaring di level workflow supaya runner tidak
+# dinyalakan untuk PR yang tidak menyentuh migration sama sekali.
+on:
+  pull_request:
+    paths:
+      - "backend/db/migrations/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  squawk:
+    name: squawk — lock dan rewrite tabel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      # Versi PostgreSQL disebut eksplisit: aturan yang berlaku berbeda antar
+      # versi, dan ALTER TABLE yang aman di 18 bisa memicu rewrite di versi
+      # lama. Lihat ADR-0007.
+      - name: squawk
+        run: pnpm dlx squawk-cli --pg-version=18.0 backend/db/migrations/*.sql
