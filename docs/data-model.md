@@ -13,7 +13,8 @@ Yang ditunda hanya kode yang memakainya, bukan tabelnya.
 
 | Aturan | Nilai | Alasan |
 |---|---|---|
-| Primary key | `uuid` v7, dibuat di aplikasi | Terurut waktu (ramah indeks) tanpa membocorkan jumlah data seperti ID berurutan (`rules/25-postgresql.md`) |
+| Primary key | `uuid` v7, **dihasilkan aplikasi**, dengan `DEFAULT uuidv7()` sebagai jaring pengaman | Terurut waktu (ramah indeks) tanpa membocorkan jumlah data seperti ID berurutan (`rules/25-postgresql.md`). Lihat [ADR-0007](adr/0007-postgresql-18.md) |
+| Versi PostgreSQL | 18, di `local` maupun `production` | [ADR-0007](adr/0007-postgresql-18.md) |
 | String | `text`, tidak pernah `varchar(n)` | Batas panjang nyaris selalu jadi salah suatu hari |
 | Waktu | `timestamptz`, disimpan UTC | `timestamp` tanpa zona menghasilkan bug yang baru muncul saat ada pengguna di zona lain |
 | Tanggal murni | `date` untuk `start_date` / `due_date` | Jatuh tempo adalah tanggal di zona pengguna, bukan titik waktu |
@@ -24,6 +25,14 @@ Yang ditunda hanya kode yang memakainya, bukan tabelnya.
 | Penghapusan | `deleted_at timestamptz` (sampah, bisa di-undo) + `archived_at timestamptz` (arsip, sengaja) | Dua konsep berbeda: I2 arsip, I3 sampah |
 | Unique + soft delete | Selalu indeks unik **parsial** dengan `WHERE deleted_at IS NULL` | Tanpa ini, nama yang dihapus memblokir nama baru |
 | Foreign key | Selalu berindeks, `ON DELETE` ditentukan sengaja | PostgreSQL tidak membuat indeks FK otomatis |
+
+**Setiap kolom `id uuid PRIMARY KEY` di seluruh DDL di bawah dibaca sebagai
+`id uuid PRIMARY KEY DEFAULT uuidv7()`.** Ditulis sekali di sini alih-alih
+diulang 28 kali. Nilainya tetap dihasilkan aplikasi — ID dibutuhkan sebelum
+`INSERT`, untuk menulis `activity_events` yang merujuk baris itu di dalam
+transaksi yang sama. `DEFAULT` hanya menutup `INSERT` manual dari psql, seed,
+dan migration. Pengecualian: `outbox.id` yang memakai `bigint identity`, karena
+urutan pengiriman penting dan ID-nya tidak pernah terlihat pengguna.
 
 **Soft delete ditegakkan lewat view**, bukan lewat disiplin. Setiap tabel yang
 punya `deleted_at` mendapat view `<nama>_live` yang sudah menyaringnya, dan

@@ -3,6 +3,10 @@
 **Status:** Accepted
 **Tanggal:** 2026-08-06
 **Pengambil keputusan:** pemilik proyek
+**Sebagian digantikan:** baris `Database` oleh
+[ADR-0007](0007-postgresql-18.md); tata letak paket backend oleh
+[ADR-0008](0008-struktur-modular-backend.md). Seluruh keputusan lain di bawah
+tetap berlaku.
 
 ## Konteks
 

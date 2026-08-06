@@ -61,7 +61,7 @@ dalam store lokal, Fase 8 berarti menulis ulang setiap layar.
 - Lapisan otorisasi (`internal/authz`) beserta test-nya, walau baru dipakai
   oleh sedikit endpoint
 - CI: `go vet`, `golangci-lint`, `go test -race`, `tsc --noEmit`, `eslint`,
-  `govulncheck`, `npm audit`
+  `govulncheck`, `pnpm audit`
 - Docker Compose (Postgres, Redis, api, worker, caddy) dan deploy ke VPS
 
 **Selesai kalau:** bisa login di URL produksi, `GET /api/v1/me` mengembalikan
