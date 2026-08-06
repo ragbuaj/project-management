@@ -25,46 +25,47 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # Test integrasi butuh PostgreSQL sungguhan. Mem-mock driver SQL hanya
+    # menguji mock-nya sendiri (rules/20-go.md), dan yang diperiksa di sini
+    # justru apakah PostgreSQL benar-benar menerima setelan yang dikirim.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: pm
+          POSTGRES_PASSWORD: pm
+          POSTGRES_DB: pm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pm -d pm_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://pm:pm@localhost:5432/pm_test?sslmode=disable
     steps:
       - uses: actions/checkout@v5
 
-      # Sampai PR 2 belum ada satu pun berkas .go. Tanpa penjaga ini
-      # golangci-lint keluar dengan kode 5 ("no go files to analyze") dan job
-      # merah karena alasan yang salah.
-      - name: Apakah sudah ada berkas Go?
-        id: cari
-        run: |
-          if [ -n "$(find . -name '*.go' -print -quit)" ]; then
-            echo "ada=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ada=false" >> "$GITHUB_OUTPUT"
-            echo "Belum ada berkas Go — vet, lint, test, dan govulncheck dilewati."
-          fi
-        shell: bash
-
       - uses: actions/setup-go@v6
-        if: steps.cari.outputs.ada == 'true'
         with:
           go-version: ${{ env.GO_VERSION }}
-          # go.sum baru lahir di PR 2, saat dependensi pertama masuk.
-          cache: false
+          cache-dependency-path: backend/go.sum
 
       - name: go vet
-        if: steps.cari.outputs.ada == 'true'
         run: go vet ./...
 
       - uses: golangci/golangci-lint-action@v8
-        if: steps.cari.outputs.ada == 'true'
         with:
           version: v2.12.2
           working-directory: backend
 
+      # -race di sini, bukan di hook lokal: detektor balapan menuntut cgo, yang
+      # tidak selalu ada di mesin pengembangan.
       - name: go test -race
-        if: steps.cari.outputs.ada == 'true'
         run: go test -race ./...
 
       - name: govulncheck
-        if: steps.cari.outputs.ada == 'true'
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   secret:

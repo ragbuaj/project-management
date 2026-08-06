@@ -27,9 +27,27 @@ seperti kode. Mulai dari sana, bukan dari kode.
 ```
 backend/     Go — API, worker, migration, seed
 frontend/    React + Vite (mulai Fase 0 PR 8)
-deploy/      Docker Compose, Caddy (mulai Fase 0 PR 3)
+compose.yml  PostgreSQL, Redis, Mailpit untuk pengembangan lokal
+deploy/      Artefak produksi: Dockerfile, Caddy (mulai Fase 0 PR 9)
 docs/        Seluruh dokumen keputusan
 ```
+
+## Menjalankan lokal
+
+```bash
+cp .env.example .env
+```
+
+```bash
+docker compose up -d
+```
+
+```bash
+cd backend && go run ./cmd/api
+```
+
+Selengkapnya — termasuk bentrok port dengan PostgreSQL yang sudah terpasang di
+mesin Anda — ada di [environments.md](docs/environments.md).
 
 ## Gerbang otomatis
 

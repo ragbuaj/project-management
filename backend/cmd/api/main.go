@@ -14,6 +14,7 @@ import (
 
 	"github.com/ragbuaj/project-management/backend/internal/config"
 	"github.com/ragbuaj/project-management/backend/internal/httpx"
+	"github.com/ragbuaj/project-management/backend/internal/postgres"
 )
 
 func main() {
@@ -39,8 +40,21 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Refusing to start without the database is deliberate: docs/nfr.md states
+	// the application is down when PostgreSQL is down.
+	pool, err := postgres.New(ctx, cfg.DatabaseURL, cfg.DatabaseMaxConns)
+	if err != nil {
+		return fmt.Errorf("postgres: %w", err)
+	}
+
+	defer pool.Close()
+
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", httpx.Health())
+	mux.Handle("GET /readyz", httpx.Ready(log, config.ReadyTimeout, httpx.ReadyCheck{
+		Name:  "postgres",
+		Probe: pool.Ping,
+	}))
 
 	var lc net.ListenConfig
 

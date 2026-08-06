@@ -3,6 +3,7 @@ package config_test
 import (
 	"errors"
 	"log/slog"
+	"maps"
 	"strings"
 	"testing"
 
@@ -19,14 +20,35 @@ func lookupFrom(env map[string]string) config.Lookup {
 	}
 }
 
-// valid is the smallest configuration that must be accepted. Every failing
-// case below is built by breaking exactly one variable from it, so that what
-// is under test really is that variable.
+// valid is the smallest configuration that must be accepted.
 func valid() map[string]string {
 	return map[string]string{
 		"APP_ENV":      "local",
 		"APP_BASE_URL": "http://localhost:8080",
+		"DATABASE_URL": "postgres://pm:redacted-in-tests@localhost:5432/pm",
 	}
+}
+
+// with starts from valid() and overrides individual keys. An empty value drops
+// the key, which is how an absent variable is expressed.
+//
+// Building cases this way means every failing case differs from a passing one
+// in exactly the thing under test, and adding a new required variable does not
+// mean editing every case.
+func with(overrides map[string]string) map[string]string {
+	env := valid()
+
+	for k, v := range overrides {
+		if v == "" {
+			delete(env, k)
+
+			continue
+		}
+
+		env[k] = v
+	}
+
+	return env
 }
 
 func TestLoadValid(t *testing.T) {
@@ -52,13 +74,17 @@ func TestLoadValid(t *testing.T) {
 				if cfg.MaxRequestBytes != 1<<20 {
 					t.Errorf("MaxRequestBytes = %d, want %d", cfg.MaxRequestBytes, 1<<20)
 				}
+
+				if cfg.DatabaseMaxConns != 20 {
+					t.Errorf("DatabaseMaxConns = %d, want 20", cfg.DatabaseMaxConns)
+				}
 			},
 		},
 		"production over https is accepted": {
-			env: map[string]string{
+			env: with(map[string]string{
 				"APP_ENV":      "production",
 				"APP_BASE_URL": "https://pm.example.com",
-			},
+			}),
 			assert: func(t *testing.T, cfg config.Config) {
 				t.Helper()
 
@@ -68,10 +94,7 @@ func TestLoadValid(t *testing.T) {
 			},
 		},
 		"a bare trailing slash is stripped, not rejected": {
-			env: map[string]string{
-				"APP_ENV":      "local",
-				"APP_BASE_URL": "http://localhost:8080/",
-			},
+			env: with(map[string]string{"APP_BASE_URL": "http://localhost:8080/"}),
 			assert: func(t *testing.T, cfg config.Config) {
 				t.Helper()
 
@@ -80,14 +103,25 @@ func TestLoadValid(t *testing.T) {
 				}
 			},
 		},
-		"optional variables are honored when set": {
-			env: map[string]string{
-				"APP_ENV":           "local",
-				"APP_BASE_URL":      "http://localhost:8080",
-				"HTTP_ADDR":         "127.0.0.1:9999",
-				"LOG_LEVEL":         "DEBUG",
-				"MAX_REQUEST_BYTES": "2048",
+		"the postgresql:// scheme is accepted too": {
+			env: with(map[string]string{
+				"DATABASE_URL": "postgresql://pm:redacted-in-tests@localhost:5432/pm",
+			}),
+			assert: func(t *testing.T, cfg config.Config) {
+				t.Helper()
+
+				if cfg.DatabaseURL == "" {
+					t.Error("DatabaseURL is empty")
+				}
 			},
+		},
+		"optional variables are honored when set": {
+			env: with(map[string]string{
+				"HTTP_ADDR":          "127.0.0.1:9999",
+				"LOG_LEVEL":          "DEBUG",
+				"MAX_REQUEST_BYTES":  "2048",
+				"DATABASE_MAX_CONNS": "5",
+			}),
 			assert: func(t *testing.T, cfg config.Config) {
 				t.Helper()
 
@@ -102,14 +136,14 @@ func TestLoadValid(t *testing.T) {
 				if cfg.MaxRequestBytes != 2048 {
 					t.Errorf("MaxRequestBytes = %d, want 2048", cfg.MaxRequestBytes)
 				}
+
+				if cfg.DatabaseMaxConns != 5 {
+					t.Errorf("DatabaseMaxConns = %d, want 5", cfg.DatabaseMaxConns)
+				}
 			},
 		},
 		"a whitespace-only value counts as absent": {
-			env: map[string]string{
-				"APP_ENV":      "local",
-				"APP_BASE_URL": "http://localhost:8080",
-				"HTTP_ADDR":    "   ",
-			},
+			env: with(map[string]string{"HTTP_ADDR": "   "}),
 			assert: func(t *testing.T, cfg config.Config) {
 				t.Helper()
 
@@ -142,72 +176,77 @@ func TestLoadInvalid(t *testing.T) {
 		want []string // fragments the error message must contain
 	}{
 		"APP_ENV absent": {
-			env:  map[string]string{"APP_BASE_URL": "http://localhost:8080"},
+			env:  with(map[string]string{"APP_ENV": ""}),
 			want: []string{"APP_ENV is required"},
 		},
 		"APP_ENV unknown": {
-			env: map[string]string{
-				"APP_ENV":      "staging",
-				"APP_BASE_URL": "http://localhost:8080",
-			},
+			env:  with(map[string]string{"APP_ENV": "staging"}),
 			want: []string{"APP_ENV is invalid", "staging"},
 		},
 		"APP_BASE_URL absent": {
-			env:  map[string]string{"APP_ENV": "local"},
+			env:  with(map[string]string{"APP_BASE_URL": ""}),
 			want: []string{"APP_BASE_URL is required"},
 		},
 		"APP_BASE_URL without a scheme": {
-			env: map[string]string{
-				"APP_ENV":      "local",
-				"APP_BASE_URL": "localhost:8080",
-			},
+			env:  with(map[string]string{"APP_BASE_URL": "localhost:8080"}),
 			want: []string{"APP_BASE_URL is invalid"},
 		},
 		"APP_BASE_URL carrying a path": {
-			env: map[string]string{
-				"APP_ENV":      "local",
-				"APP_BASE_URL": "http://localhost:8080/app",
-			},
+			env:  with(map[string]string{"APP_BASE_URL": "http://localhost:8080/app"}),
 			want: []string{"without a path"},
 		},
 		// The most valuable guard in this file: an http base URL in production
 		// means the Secure session cookie is never sent, and the symptom shows
 		// up as "logging in never works".
 		"http is rejected in production": {
-			env: map[string]string{
+			env: with(map[string]string{
 				"APP_ENV":      "production",
 				"APP_BASE_URL": "http://pm.example.com",
-			},
+			}),
 			want: []string{"expected https when APP_ENV is production"},
 		},
 		"LOG_LEVEL unknown": {
-			env: map[string]string{
-				"APP_ENV":      "local",
-				"APP_BASE_URL": "http://localhost:8080",
-				"LOG_LEVEL":    "trace",
-			},
+			env:  with(map[string]string{"LOG_LEVEL": "trace"}),
 			want: []string{"LOG_LEVEL is invalid", "trace"},
 		},
 		"MAX_REQUEST_BYTES not a number": {
-			env: map[string]string{
-				"APP_ENV":           "local",
-				"APP_BASE_URL":      "http://localhost:8080",
-				"MAX_REQUEST_BYTES": "plenty",
-			},
+			env:  with(map[string]string{"MAX_REQUEST_BYTES": "plenty"}),
 			want: []string{"MAX_REQUEST_BYTES is invalid"},
 		},
 		"MAX_REQUEST_BYTES zero": {
-			env: map[string]string{
-				"APP_ENV":           "local",
-				"APP_BASE_URL":      "http://localhost:8080",
-				"MAX_REQUEST_BYTES": "0",
-			},
+			env:  with(map[string]string{"MAX_REQUEST_BYTES": "0"}),
 			want: []string{"MAX_REQUEST_BYTES is invalid"},
+		},
+		"DATABASE_URL absent": {
+			env:  with(map[string]string{"DATABASE_URL": ""}),
+			want: []string{"DATABASE_URL is required"},
+		},
+		"DATABASE_URL with the wrong scheme": {
+			env:  with(map[string]string{"DATABASE_URL": "mysql://pm@localhost:3306/pm"}),
+			want: []string{"DATABASE_URL is invalid", "postgres://"},
+		},
+		"DATABASE_URL without a host": {
+			env:  with(map[string]string{"DATABASE_URL": "postgres:///pm"}),
+			want: []string{"DATABASE_URL is invalid", "host"},
+		},
+		"DATABASE_MAX_CONNS zero": {
+			env:  with(map[string]string{"DATABASE_MAX_CONNS": "0"}),
+			want: []string{"DATABASE_MAX_CONNS is invalid"},
+		},
+		// An accidental extra zero takes the database down rather than making
+		// it faster: PostgreSQL runs one process per connection.
+		"DATABASE_MAX_CONNS beyond the ceiling": {
+			env:  with(map[string]string{"DATABASE_MAX_CONNS": "100000"}),
+			want: []string{"DATABASE_MAX_CONNS is invalid", "between 1 and 1000"},
 		},
 		// Reporting one problem at a time forces the operator to restart the
 		// application to discover the next mistake.
 		"every problem is reported at once": {
-			env:  map[string]string{"LOG_LEVEL": "trace"},
+			env: with(map[string]string{
+				"APP_ENV":      "",
+				"APP_BASE_URL": "",
+				"LOG_LEVEL":    "trace",
+			}),
 			want: []string{"APP_ENV is required", "APP_BASE_URL is required", "LOG_LEVEL is invalid"},
 		},
 	}
@@ -231,5 +270,29 @@ func TestLoadInvalid(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A connection string carries the password, and a start-up error is the first
+// thing anyone pastes into a chat window when an application refuses to boot.
+func TestLoadNeverEchoesTheDatabasePassword(t *testing.T) {
+	t.Parallel()
+
+	const password = "correct-horse-battery-staple"
+
+	broken := maps.Clone(valid())
+	broken["DATABASE_URL"] = "mysql://pm:" + password + "@localhost:3306/pm"
+
+	_, err := config.Load(lookupFrom(broken))
+	if err == nil {
+		t.Fatal("Load() = nil, want an error")
+	}
+
+	if strings.Contains(err.Error(), password) {
+		t.Fatalf("the error message leaks the password: %v", err)
+	}
+
+	if !strings.Contains(err.Error(), "DATABASE_URL is invalid") {
+		t.Errorf("the error message does not name the variable: %v", err)
 	}
 }

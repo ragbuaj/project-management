@@ -1,0 +1,59 @@
+# Local development only. Production compose, Dockerfile, and Caddy config live
+# in deploy/ and arrive in PR 9.
+#
+# Kept at the repository root rather than in deploy/ so that `docker compose`
+# finds both this file and .env without extra flags. The two files are for
+# different audiences: this one for the developer, deploy/ for the server.
+
+name: pm
+
+services:
+  postgres:
+    # Version pinned deliberately. ADR-0007 chose 18, and local drifting away
+    # from production is how "works on my machine" starts.
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pm}
+      POSTGRES_DB: ${POSTGRES_DB:-pm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required, see .env.example}
+      # Forced to the classic layout. Postgres 18 images moved the default
+      # PGDATA to a version-scoped path, and a volume mounted at the old one
+      # would silently hold nothing.
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pm} -d ${POSTGRES_DB:-pm}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # Persistence off on purpose: everything in Redis here is cache, pub/sub
+    # fan-out, and rate-limit counters. Nothing that may not be lost. The
+    # durable queue lives in PostgreSQL (ADR-0002).
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  mailpit:
+    # Catches every outgoing mail locally so an invitation can never reach a
+    # real inbox from a development machine.
+    image: axllent/mailpit:latest
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
