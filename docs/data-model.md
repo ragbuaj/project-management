@@ -642,8 +642,10 @@ aplikasi**. Log memuat `request_id`, `user_id`, dan `entity_id` — bukan isinya
 | Akun pengguna yang dihapus | — | `deleted_at` diisi, `email` dan `name` diganti nilai tersamarkan. Kartu dan komentarnya **tetap ada** dengan penulis yang ditandai "pengguna dihapus" |
 
 Baris terakhir adalah keputusan produk, bukan teknis: menghapus komentar
-seseorang saat akunnya dihapus akan merusak riwayat pekerjaan bersama. Kalau
-Anda tidak setuju, ini titik yang perlu diubah sekarang, bukan nanti.
+seseorang saat akunnya dihapus akan merusak riwayat pekerjaan bersama.
+**Disetujui pemilik, 2026-08-06.** Mengubahnya setelah ada data berarti
+menghapus riwayat yang tidak bisa dibuat ulang — perlu keputusan tertulis
+tersendiri, bukan perubahan diam-diam.
 
 ## Backup
 
