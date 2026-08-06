@@ -1,6 +1,6 @@
 # ADR-0005: Sesi opak di cookie `HttpOnly` untuk browser, Bearer token untuk program
 
-**Status:** Proposed
+**Status:** Accepted
 **Tanggal:** 2026-08-06
 **Pengambil keputusan:** pemilik proyek
 

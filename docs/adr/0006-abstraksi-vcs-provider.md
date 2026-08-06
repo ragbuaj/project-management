@@ -1,6 +1,6 @@
 # ADR-0006: Satu interface `VcsProvider` untuk GitHub dan GitLab
 
-**Status:** Proposed
+**Status:** Accepted
 **Tanggal:** 2026-08-06
 **Pengambil keputusan:** pemilik proyek
 

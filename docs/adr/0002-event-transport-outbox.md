@@ -1,6 +1,6 @@
 # ADR-0002: Event lewat tabel outbox PostgreSQL, bukan Kafka
 
-**Status:** Proposed
+**Status:** Accepted
 **Tanggal:** 2026-08-06
 **Pengambil keputusan:** pemilik proyek
 

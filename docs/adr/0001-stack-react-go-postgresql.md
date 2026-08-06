@@ -1,6 +1,6 @@
 # ADR-0001: React (Vite SPA) + Go + PostgreSQL + Redis, disajikan dari satu origin
 
-**Status:** Proposed
+**Status:** Accepted
 **Tanggal:** 2026-08-06
 **Pengambil keputusan:** pemilik proyek
 
