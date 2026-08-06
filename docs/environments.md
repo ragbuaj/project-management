@@ -10,6 +10,10 @@ Anda sendiri, enam bulan lagi, di mesin yang berbeda.
 | `local` | Pengembangan | Seed, termasuk seed berukuran penuh 50.000 kartu untuk uji performa | Docker Compose di mesin Anda |
 | `production` | Pemakaian nyata | Nyata | VPS |
 
+Target deploy **VPS + Docker Compose disetujui pemilik, 2026-08-06.** Pilihan
+ini yang membuat WebSocket persisten (G5), worker background (E2, E3, H3), dan
+Redis bisa hidup di satu tempat tanpa layanan tambahan.
+
 **Tidak ada staging.** Untuk satu pengembang, staging adalah lingkungan ketiga
 yang harus dirawat dan yang akan menyimpang dari produksi tanpa ada yang tahu.
 Penggantinya: feature flag dan kemampuan rollback yang benar-benar diuji.

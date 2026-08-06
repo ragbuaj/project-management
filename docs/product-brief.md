@@ -1,16 +1,11 @@
 # Product Brief — Project Management Tool
 
-**Status:** Draf, menunggu review
+**Status:** Disetujui pemilik, 2026-08-06
 **Nama produk:** belum ditetapkan (dirujuk sebagai "aplikasi" di seluruh dokumen)
-
-> ⚠️ **Bagian yang perlu Anda koreksi.** Bagian "Masalah" dan "Ukuran
-> keberhasilan" ditandai `[ASUMSI]` di tempat yang saya isi tanpa dasar dari
-> Anda. Saya tidak bisa menebak ini — kalau salah, seluruh prioritas fase ikut
-> salah. Tolong perbaiki sebelum dokumen ini disetujui.
 
 ## Masalah
 
-`[ASUMSI]` Pekerjaan pribadi dan pekerjaan bersama beberapa rekan tersebar di
+Pekerjaan pribadi dan pekerjaan bersama beberapa rekan tersebar di
 beberapa tempat — catatan, chat, dan ingatan. Akibatnya:
 
 - Tidak ada satu tempat yang menjawab "apa yang sedang saya kerjakan sekarang"
@@ -27,9 +22,17 @@ beberapa tempat — catatan, chat, dan ingatan. Akibatnya:
 
 | Pengguna | Jumlah | Frekuensi | Kebutuhan utama |
 |---|---|---|---|
-| Pemilik (Anda) | 1 | Harian, sepanjang hari | Semua fitur. Kecepatan input dan navigasi lebih penting dari kelengkapan tampilan |
-| Rekan yang diundang | `[ASUMSI]` 2–10 | Mingguan sampai harian | Melihat papan, memperbarui kartunya sendiri, berkomentar |
+| Pengguna harian — pemilik **dan** rekan yang diundang | 3–11 | Harian, sepanjang hari | Semua fitur. Kecepatan input dan navigasi lebih penting dari kelengkapan tampilan |
 | Pengamat (share link) | Sesekali | Jarang | Melihat status tanpa akun |
+
+**Pemilik dan rekan adalah satu golongan pengguna yang sama**, dengan frekuensi
+dan kebutuhan yang sama. Perbedaan di antara mereka hanya soal kewenangan
+(lihat [authorization.md](authorization.md)), bukan soal cara memakai.
+
+Ini menetapkan satu hal yang mengikat seluruh rancangan: **tidak ada fitur yang
+boleh dirancang sebagai "mode ringan untuk rekan".** Setiap layar, pintasan,
+dan pengoptimalan performa berlaku untuk semua pengguna harian. Kalau sebuah
+alur hanya nyaman untuk pemilik, alur itu belum selesai.
 
 Sistem dirancang untuk skala puluhan pengguna, bukan ribuan. Keputusan
 arsitektur di [architecture.md](architecture.md) mengambil keuntungan dari
@@ -76,13 +79,11 @@ Bagian ini yang mencegah pelebaran cakupan tiga bulan lagi. Semua di bawah ini
 
 ## Ukuran keberhasilan
 
-`[ASUMSI]` Ganti dengan angka yang benar-benar berarti buat Anda.
-
 | Ukuran | Target | Kapan diukur |
 |---|---|---|
 | Aplikasi dipakai untuk pekerjaan nyata, bukan hanya diuji | Pemilik memakainya ≥ 5 hari per minggu selama 4 minggu berturut-turut | 1 bulan setelah Fase 1 |
 | Alat lama ditinggalkan | Tidak ada lagi pekerjaan yang dilacak di alat sebelumnya | 1 bulan setelah Fase 1 |
-| Rekan benar-benar memakainya | ≥ 2 rekan aktif memperbarui kartu tanpa diingatkan | 1 bulan setelah Fase 2 |
+| Rekan memakainya sesering pemilik | Setiap rekan yang diundang memakainya ≥ 5 hari per minggu, tanpa diingatkan | 1 bulan setelah Fase 2 |
 | Tidak memperlambat | Buka board dan pindahkan kartu terasa seketika — lihat target angka di [nfr.md](nfr.md) | Setiap fase |
 | Tidak kehilangan data | Nol insiden kehilangan data. Restore dari backup pernah diuji | Setiap kuartal |
 
@@ -108,8 +109,9 @@ memperbaiki, bukan untuk lanjut ke Fase 2.
 
 Dipakai untuk memutuskan hal kecil tanpa harus bertanya setiap kali:
 
-1. **Kecepatan pemilik menang atas kelengkapan.** Kalau sebuah fitur membuat
-   alur harian jadi dua klik lebih panjang, fitur itu salah rancang.
+1. **Kecepatan pengguna harian menang atas kelengkapan** — pemilik maupun
+   rekan, tanpa dibedakan. Kalau sebuah fitur membuat alur harian jadi dua klik
+   lebih panjang, fitur itu salah rancang.
 2. **Data milik pemilik.** Ekspor penuh (H6) selalu berfungsi, di setiap fase.
    Tidak ada data yang hanya bisa keluar lewat antarmuka.
 3. **Tidak ada konfigurasi yang tidak diminta.** Setiap opsi yang bisa diatur
