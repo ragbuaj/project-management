@@ -33,12 +33,13 @@ pre-commit:
 pre-push:
   parallel: true
   jobs:
-    # Glob-nya menjaga job ini tidak berjalan selama backend masih kosong —
-    # `go test ./...` tanpa paket keluar dengan galat, bukan hijau.
+    # Tanpa -race: detektor balapan Go menuntut cgo, dan mesin pengembangan
+    # Windows umumnya tidak punya compiler C. rules/20-go.md mewajibkan -race
+    # **di CI**, dan di sanalah ia dijalankan — job Go di ci.yml.
     - name: go-test
       root: backend/
       glob: "backend/**/*.go"
-      run: go test -race ./...
+      run: go test ./...
 
     - name: go-vuln
       root: backend/
