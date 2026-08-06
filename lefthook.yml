@@ -1,0 +1,46 @@
+# Gerbang lokal. Yang cepat di pre-commit, yang lambat di pre-push — hook yang
+# lambat adalah hook yang akan dilewati orang dengan --no-verify.
+#
+# Ini BUKAN pengganti CI. Yang di lokal bisa dilewati, yang di CI tidak.
+# Setiap pemakaian --no-verify dinyatakan di PR, bukan jadi kebiasaan.
+#
+# Job frontend (prettier, eslint, tsc, nilai-mentah) ditambahkan bersama
+# frontend-nya di PR 8. Gerbang yang belum bisa dijalankan akan hijau karena
+# alasan yang salah, dan itu lebih buruk daripada tidak ada gerbang.
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: secret
+      run: gitleaks git --staged --no-banner
+
+    - name: go-format
+      root: backend/
+      glob: "backend/**/*.go"
+      run: golangci-lint fmt --diff
+
+    - name: go-lint
+      root: backend/
+      glob: "backend/**/*.go"
+      run: golangci-lint run
+
+    # Versi PostgreSQL disebut eksplisit: aturan yang berlaku berbeda antar
+    # versi, dan ALTER TABLE yang aman di 18 bisa memicu rewrite di versi lama.
+    - name: migration-lint
+      glob: "backend/db/migrations/*.sql"
+      run: pnpm dlx squawk-cli --pg-version=18.0 {staged_files}
+
+pre-push:
+  parallel: true
+  jobs:
+    # Glob-nya menjaga job ini tidak berjalan selama backend masih kosong —
+    # `go test ./...` tanpa paket keluar dengan galat, bukan hijau.
+    - name: go-test
+      root: backend/
+      glob: "backend/**/*.go"
+      run: go test -race ./...
+
+    - name: go-vuln
+      root: backend/
+      glob: "backend/**/*.go"
+      run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

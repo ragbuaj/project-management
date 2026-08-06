@@ -1,0 +1,66 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    # Kelas kesalahan yang ditegakkan rules/20-go.md dan rules/25-postgresql.md.
+    - bodyclose        # response body HTTP wajib ditutup
+    - contextcheck     # ctx diteruskan, tidak diputus di tengah jalan
+    - errorlint        # %w bukan %v, errors.Is bukan perbandingan string
+    - noctx            # setiap operasi eksternal membawa ctx
+    - rowserrcheck     # rows.Err() diperiksa setelah loop
+    - sqlclosecheck    # rows dan stmt ditutup
+    - nilerr           # return nil padahal err tidak nil
+    - gosec            # rules/40-security.md
+    - misspell
+    # ADR-0008: konvensi alias impor lintas modul.
+    - importas
+
+  settings:
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+
+    misspell:
+      locale: US
+
+    # ADR-0008 menetapkan alias berpola <modul><lapisan>. Konvensi yang hanya
+    # tertulis akan menyimpang pada modul kelima, jadi ditegakkan di sini.
+    importas:
+      no-unaliased: true
+      alias:
+        - pkg: github.com/ragbuaj/project-management/backend/internal/modules/(\w+)/domain
+          alias: ${1}dom
+        - pkg: github.com/ragbuaj/project-management/backend/internal/modules/(\w+)/repository
+          alias: ${1}repo
+        - pkg: github.com/ragbuaj/project-management/backend/internal/modules/(\w+)/service
+          alias: ${1}svc
+        - pkg: github.com/ragbuaj/project-management/backend/internal/modules/(\w+)/handler
+          alias: ${1}http
+        - pkg: github.com/ragbuaj/project-management/backend/internal/modules/(\w+)/route
+          alias: ${1}route
+
+  exclusions:
+    # Berkas hasil generate sqlc tidak ditulis manusia dan tidak di-review
+    # baris per baris.
+    generated: lax
+    rules:
+      # Test boleh memakai kredensial dan nilai acak lemah.
+      - path: _test\.go
+        linters:
+          - gosec
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/ragbuaj/project-management/backend
+  exclusions:
+    generated: lax
