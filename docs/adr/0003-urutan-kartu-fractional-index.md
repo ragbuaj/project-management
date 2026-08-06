@@ -1,6 +1,6 @@
 # ADR-0003: Urutan kartu memakai fractional index bertipe `text`
 
-**Status:** Proposed
+**Status:** Accepted
 **Tanggal:** 2026-08-06
 **Pengambil keputusan:** pemilik proyek
 

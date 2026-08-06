@@ -1,6 +1,6 @@
 # ADR-0004: Status adalah milik Project; Column hanya tampilan board
 
-**Status:** Proposed
+**Status:** Accepted
 **Tanggal:** 2026-08-06
 **Pengambil keputusan:** pemilik proyek
 

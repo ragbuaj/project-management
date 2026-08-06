@@ -14,7 +14,7 @@ Statusnya ada di tabel bawah.
 | 1 | [product-brief.md](product-brief.md) | Masalah, pengguna, ruang lingkup, **non-goals** | ⏳ menunggu review |
 | 2 | [glossary.md](glossary.md) | Istilah domain yang disepakati | ⏳ menunggu review |
 | 3 | [architecture.md](architecture.md) | C4 level 1–2, struktur paket, alasan pemilihan | ⏳ menunggu review |
-| 4 | [adr/](adr/) | Keputusan yang sulit dibalik | ⏳ menunggu review |
+| 4 | [adr/](adr/) | Keputusan yang sulit dibalik | ✅ ADR-0001…0006 Accepted |
 | 5 | [data-model.md](data-model.md) | ERD, DDL, indeks, retensi, penandaan data pribadi | ⏳ menunggu review |
 | 6 | [api/openapi.yaml](api/openapi.yaml) | Kontrak API — sumber kebenaran | ⏳ menunggu review |
 | 7 | [authorization.md](authorization.md) | Peran × sumber daya × aksi | ⏳ menunggu review |
