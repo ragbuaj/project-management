@@ -1,0 +1,39 @@
+# Secrets — .env.example is the only env file that belongs in the repo.
+.env
+.env.*
+!.env.example
+
+# Go
+/backend/bin/
+/backend/tmp/
+*.exe
+*.test
+*.out
+
+# Embedded SPA build output — produced by the frontend build, never committed.
+/backend/web/
+
+# Node
+node_modules/
+/frontend/dist/
+/frontend/.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+
+# Local infrastructure state
+/deploy/data/
+/deploy/*.local.yml
+
+# Coverage & profiling
+coverage.out
+coverage.html
+*.prof
+
+# Editors & OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

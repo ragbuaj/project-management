@@ -1,0 +1,715 @@
+openapi: 3.1.0
+
+# Sumber kebenaran kontrak API. Tipe TypeScript DIGENERATE dari berkas ini —
+# dilarang menulis ulang tipe response secara manual (rules/30-api-contract.md).
+#
+# Cakupan berkas ini: Fase 0 dan Fase 1. Endpoint fase berikutnya ditambahkan
+# di PR yang sama dengan implementasinya, bukan lebih dulu — menulis kontrak
+# untuk fitur yang bentuknya belum pasti hanya menghasilkan kontrak yang bohong.
+
+info:
+  title: Project Management API
+  version: 1.0.0
+  description: |
+    ## Konvensi
+
+    - Nama field JSON `snake_case`. Konversi ke `camelCase` dilakukan di satu
+      lapisan klien.
+    - Semua ID berupa `string`, walau di database bertipe `uuid`.
+    - Waktu selalu RFC3339 UTC dengan zona eksplisit: `2026-08-06T09:15:00Z`.
+      Tanggal murni (`due_date`, `start_date`) berformat `YYYY-MM-DD`.
+    - `null` dan "field tidak ada" **tidak** dibedakan artinya. Field yang
+      kosong dikirim sebagai `null`, bukan dihilangkan.
+    - Setiap response, sukses maupun gagal, membawa header `X-Request-Id`.
+    - Paginasi berbasis cursor. `limit` dibatasi server, maksimum 100.
+
+    ## Autentikasi
+
+    - **Browser**: cookie sesi `__Host-session` (`HttpOnly`, `Secure`,
+      `SameSite=Lax`). Permintaan yang mengubah data wajib membawa header
+      `X-CSRF-Token` yang cocok dengan cookie `csrf`.
+    - **Program** (Fase 9): `Authorization: Bearer pmt_...`. Dikecualikan dari
+      pemeriksaan CSRF. Token tidak pernah diterima dari query string.
+
+    Rincian di `docs/adr/0005-autentikasi-sesi-cookie.md`.
+
+    ## Otorisasi
+
+    Sumber daya yang bukan hak pemanggil dikembalikan sebagai `404`, bukan
+    `403`, supaya keberadaannya tidak bocor. Matriks lengkap ada di
+    `docs/authorization.md`.
+
+servers:
+  - url: /api/v1
+
+security:
+  - cookieAuth: []
+
+tags:
+  - name: auth
+  - name: projects
+  - name: boards
+  - name: cards
+
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Masuk dan membuat sesi
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+      responses:
+        '200':
+          description: |
+            Sesi dibuat. Cookie `__Host-session` dan `csrf` di-set.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+        '401':
+          description: |
+            Kredensial salah. Respons **identik** untuk email yang tidak
+            terdaftar dan password yang salah, supaya tidak terjadi enumerasi akun.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Keluar dan mematikan sesi di sisi server
+      responses:
+        '204': { description: Sesi dihapus }
+
+  /me:
+    get:
+      tags: [auth]
+      summary: Identitas pemanggil saat ini
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+          description: OK
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [auth]
+      summary: Ubah profil sendiri
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 200 }
+                timezone: { type: string, description: 'Nama zona IANA, contoh Asia/Jakarta' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+
+  /projects:
+    get:
+      tags: [projects]
+      summary: Daftar project tempat pemanggil menjadi anggota
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: include_archived
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Project' }
+                  next_cursor: { type: [string, 'null'] }
+    post:
+      tags: [projects]
+      summary: Buat project baru
+      description: |
+        Hanya `owner`. Pembuat otomatis menjadi `admin`. Project baru disemai
+        dengan tiga status default — satu per kategori — dan satu board.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, name]
+              properties:
+                key:
+                  type: string
+                  pattern: '^[A-Z][A-Z0-9]{1,9}$'
+                  description: |
+                    Membentuk nomor kartu (`PM-142`). **Tidak bisa diubah
+                    setelah project dibuat** — lihat docs/authorization.md.
+                name: { type: string, minLength: 1, maxLength: 200 }
+                description: { type: string, maxLength: 5000 }
+      responses:
+        '201':
+          description: Dibuat
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`key` sudah dipakai project lain'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /projects/{project_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [projects]
+      summary: Detail project
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [projects]
+      summary: Ubah project
+      description: '`key` sengaja tidak ada di sini. Lihat docs/authorization.md.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 200 }
+                description: { type: string, maxLength: 5000 }
+                archived: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{project_id}/statuses:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [projects]
+      summary: Daftar status milik project
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Status' }
+    post:
+      tags: [projects]
+      summary: Buat status
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, category]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                category: { $ref: '#/components/schemas/StatusCategory' }
+                after_status_id:
+                  type: [string, 'null']
+                  description: Sisipkan setelah status ini. `null` berarti di awal.
+      responses:
+        '201':
+          description: Dibuat
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Status' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /projects/{project_id}/boards:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [boards]
+      summary: Daftar board milik project
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Board' }
+
+  /boards/{board_id}:
+    parameters:
+      - name: board_id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [boards]
+      summary: Board beserta kolom dan kartunya
+      description: |
+        Satu panggilan untuk seluruh isi board. Kartu dikelompokkan per kolom
+        dan sudah terurut menurut `position`.
+
+        Batas: kalau sebuah kolom berisi lebih dari `column_card_limit` kartu,
+        hanya sebanyak itu yang dikirim dan `has_more` bernilai `true`. Sisanya
+        diambil lewat `/projects/{project_id}/cards`.
+      parameters:
+        - name: column_card_limit
+          in: query
+          schema: { type: integer, minimum: 10, maximum: 200, default: 100 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BoardDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{project_id}/cards:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [cards]
+      summary: Daftar kartu dengan penyaringan
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - { name: status_id,   in: query, schema: { type: array, items: { type: string } } }
+        - { name: assignee_id, in: query, schema: { type: array, items: { type: string } } }
+        - { name: label_id,    in: query, schema: { type: array, items: { type: string } } }
+        - { name: priority,    in: query, schema: { type: array, items: { $ref: '#/components/schemas/Priority' } } }
+        - { name: due_before,  in: query, schema: { type: string, format: date } }
+        - { name: q,           in: query, schema: { type: string, maxLength: 200 }, description: Pencarian teks penuh pada judul dan deskripsi }
+        - { name: include_archived, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Card' }
+                  next_cursor: { type: [string, 'null'] }
+    post:
+      tags: [cards]
+      summary: Buat kartu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:       { type: string, minLength: 1, maxLength: 500 }
+                description: { type: string, maxLength: 100000 }
+                status_id:
+                  type: [string, 'null']
+                  description: Kosong berarti status pertama berkategori `todo`.
+                type:        { $ref: '#/components/schemas/CardType' }
+                priority:    { $ref: '#/components/schemas/Priority' }
+                assignee_id: { type: [string, 'null'] }
+                due_date:    { type: [string, 'null'], format: date }
+                label_ids:   { type: array, items: { type: string } }
+      responses:
+        '201':
+          description: Dibuat
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Card' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /cards/{card_id}:
+    parameters:
+      - $ref: '#/components/parameters/CardId'
+    get:
+      tags: [cards]
+      summary: Detail kartu
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Card' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [cards]
+      summary: Ubah kartu
+      description: |
+        **Perpindahan status dan posisi tidak dilakukan lewat endpoint ini** —
+        gunakan `POST /cards/{card_id}/move`. Memisahkannya membuat pemeriksaan
+        transisi workflow (Fase 7) punya satu tempat, bukan tersebar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:       { type: string, minLength: 1, maxLength: 500 }
+                description: { type: string, maxLength: 100000 }
+                type:        { $ref: '#/components/schemas/CardType' }
+                priority:    { $ref: '#/components/schemas/Priority' }
+                assignee_id: { type: [string, 'null'], description: Harus anggota project yang sama }
+                start_date:  { type: [string, 'null'], format: date }
+                due_date:    { type: [string, 'null'], format: date }
+                label_ids:   { type: array, items: { type: string }, description: Menggantikan seluruh daftar label }
+                archived:    { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Card' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [cards]
+      summary: Buang kartu ke sampah
+      description: |
+        Dapat dipulihkan selama 30 hari. Penghapusan permanen adalah endpoint
+        terpisah yang hanya boleh dijalankan `admin`.
+      responses:
+        '204': { description: Dibuang ke sampah }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /cards/{card_id}/move:
+    parameters:
+      - $ref: '#/components/parameters/CardId'
+    post:
+      tags: [cards]
+      summary: Pindahkan kartu ke status dan posisi lain
+      description: |
+        Klien mengirim **tetangga**, bukan `position` mentah. Server yang
+        menghitung fractional index — lihat
+        `docs/adr/0003-urutan-kartu-fractional-index.md`.
+
+        Mengirim tetangga membuat dua permintaan bersamaan menghasilkan dua
+        posisi berbeda yang keduanya sah, alih-alih saling menimpa.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status_id]
+              properties:
+                status_id: { type: string }
+                after_card_id:
+                  type: [string, 'null']
+                  description: Kartu yang berada tepat di atas posisi baru. `null` berarti paling atas.
+                before_card_id:
+                  type: [string, 'null']
+                  description: Kartu yang berada tepat di bawah posisi baru. `null` berarti paling bawah.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Card' }
+        '409':
+          description: |
+            Tetangga yang dikirim sudah tidak berdampingan, atau transisi
+            status tidak diizinkan workflow (Fase 7). Klien harus memuat ulang
+            kolomnya, bukan mencoba ulang dengan data yang sama.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: __Host-session
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'API token (Fase 9). Format `pmt_...`.'
+
+  parameters:
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      schema: { type: string }
+    CardId:
+      name: card_id
+      in: path
+      required: true
+      schema: { type: string }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+      description: Diambil dari `next_cursor` respons sebelumnya. Berbasis keyset, bukan offset.
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+
+  responses:
+    Unauthorized:
+      description: Belum autentikasi
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Terautentikasi, boleh melihat sumber daya, tapi tidak berhak atas aksinya
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: |
+        Tidak ada, **atau** bukan hak pemanggil. Kedua kasus mengembalikan
+        respons yang sama supaya keberadaan sumber daya tidak bocor.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationFailed:
+      description: Input tidak lolos validasi
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    TooManyRequests:
+      description: Kena rate limit
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+              description: |
+                Stabil dan boleh dijadikan tumpuan logika klien.
+              enum:
+                - VALIDATION_FAILED
+                - UNAUTHENTICATED
+                - FORBIDDEN
+                - NOT_FOUND
+                - CONFLICT
+                - RATE_LIMITED
+                - INTERNAL
+            message:
+              type: string
+              description: |
+                Aman ditampilkan di antarmuka. **Bisa berubah** — jangan
+                dijadikan tumpuan logika. Tidak pernah memuat stack trace,
+                query SQL, versi pustaka, atau jalur berkas.
+            details:
+              type: array
+              items:
+                type: object
+                required: [field, code]
+                properties:
+                  field: { type: string }
+                  code:  { type: string }
+            request_id:
+              type: string
+              description: Ikut tercatat di log server supaya bisa ditelusuri.
+
+    User:
+      type: object
+      required: [id, email, name, timezone, is_owner]
+      properties:
+        id:       { type: string }
+        email:    { type: string, format: email }
+        name:     { type: string }
+        timezone: { type: string }
+        is_owner: { type: boolean }
+
+    UserRef:
+      description: Bentuk ringkas untuk disematkan. Tidak memuat email.
+      type: object
+      required: [id, name]
+      properties:
+        id:   { type: string }
+        name: { type: string }
+
+    ProjectRole:
+      type: string
+      enum: [admin, member, viewer]
+
+    Project:
+      type: object
+      required: [id, key, name, description, my_role, created_at, archived_at]
+      properties:
+        id:          { type: string }
+        key:         { type: string, examples: ['PM'] }
+        name:        { type: string }
+        description: { type: string }
+        my_role:     { $ref: '#/components/schemas/ProjectRole' }
+        created_at:  { type: string, format: date-time }
+        archived_at: { type: [string, 'null'], format: date-time }
+
+    StatusCategory:
+      type: string
+      description: |
+        Sumber kebenaran untuk "selesai" — **bukan** nama status. Laporan dan
+        penanda terlambat membaca field ini.
+      enum: [todo, in_progress, done]
+
+    Status:
+      type: object
+      required: [id, name, category, position]
+      properties:
+        id:       { type: string }
+        name:     { type: string }
+        category: { $ref: '#/components/schemas/StatusCategory' }
+        position: { type: string, description: 'Fractional index. Opak bagi klien — hanya untuk pengurutan.' }
+
+    Board:
+      type: object
+      required: [id, project_id, name, position, archived_at]
+      properties:
+        id:          { type: string }
+        project_id:  { type: string }
+        name:        { type: string }
+        position:    { type: string }
+        archived_at: { type: [string, 'null'], format: date-time }
+
+    BoardColumn:
+      type: object
+      required: [id, status_id, name, position, wip_limit]
+      properties:
+        id:        { type: string }
+        status_id: { type: string }
+        name:      { type: string }
+        position:  { type: string }
+        wip_limit: { type: [integer, 'null'] }
+
+    BoardDetail:
+      type: object
+      required: [board, columns]
+      properties:
+        board: { $ref: '#/components/schemas/Board' }
+        columns:
+          type: array
+          items:
+            type: object
+            required: [column, cards, total_count, has_more]
+            properties:
+              column: { $ref: '#/components/schemas/BoardColumn' }
+              cards:
+                type: array
+                items: { $ref: '#/components/schemas/Card' }
+              total_count: { type: integer }
+              has_more:    { type: boolean }
+
+    CardType:
+      type: string
+      enum: [epic, story, task, bug, subtask]
+      default: task
+
+    Priority:
+      type: string
+      enum: [low, medium, high, urgent]
+      default: medium
+
+    Label:
+      type: object
+      required: [id, name, color]
+      properties:
+        id:    { type: string }
+        name:  { type: string }
+        color: { type: string, pattern: '^#[0-9a-f]{6}$' }
+
+    Card:
+      type: object
+      required:
+        - id
+        - project_id
+        - key
+        - number
+        - type
+        - title
+        - description
+        - status_id
+        - position
+        - priority
+        - assignee
+        - reporter
+        - labels
+        - due_date
+        - created_at
+        - updated_at
+        - archived_at
+      properties:
+        id:          { type: string }
+        project_id:  { type: string }
+        key:         { type: string, examples: ['PM-142'], description: 'Untuk manusia. Jangan dipakai sebagai kunci — gunakan `id`.' }
+        number:      { type: integer }
+        type:        { $ref: '#/components/schemas/CardType' }
+        title:       { type: string }
+        description: { type: string, description: Markdown mentah. Render dilakukan klien, tanpa `dangerouslySetInnerHTML` pada HTML dari pengguna. }
+        status_id:   { type: string }
+        position:    { type: string, description: Opak. Klien hanya mengurutkan dengannya, tidak pernah menghitungnya. }
+        priority:    { $ref: '#/components/schemas/Priority' }
+        assignee:    { oneOf: [{ $ref: '#/components/schemas/UserRef' }, { type: 'null' }] }
+        reporter:    { $ref: '#/components/schemas/UserRef' }
+        labels:
+          type: array
+          items: { $ref: '#/components/schemas/Label' }
+        start_date:   { type: [string, 'null'], format: date }
+        due_date:     { type: [string, 'null'], format: date }
+        completed_at: { type: [string, 'null'], format: date-time }
+        created_at:   { type: string, format: date-time }
+        updated_at:   { type: string, format: date-time }
+        archived_at:  { type: [string, 'null'], format: date-time }
