@@ -25,6 +25,13 @@ func Register(mux *http.ServeMux, auth *identityhttp.Auth, sessions *identitysvc
 	mux.Handle("POST /api/v1/auth/login", http.HandlerFunc(auth.Login))
 	mux.Handle("POST /api/v1/auth/logout", http.HandlerFunc(auth.Logout))
 	mux.Handle("GET /api/v1/me", guard(http.HandlerFunc(auth.Me)))
+
+	// Every one of these is behind the guard, and every one of them answers
+	// about the caller and nobody else. docs/authorization.md keeps sessions to
+	// their owner even for `owner`.
+	mux.Handle("GET /api/v1/me/sessions", guard(http.HandlerFunc(auth.ListSessions)))
+	mux.Handle("DELETE /api/v1/me/sessions", guard(http.HandlerFunc(auth.RevokeOtherSessions)))
+	mux.Handle("DELETE /api/v1/me/sessions/{id}", guard(http.HandlerFunc(auth.RevokeSession)))
 }
 
 // RequireSession resolves the session cookie and refuses the request when

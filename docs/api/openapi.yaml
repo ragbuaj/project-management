@@ -146,6 +146,89 @@ paths:
               schema: { $ref: '#/components/schemas/User' }
         '400': { $ref: '#/components/responses/ValidationFailed' }
 
+  /me/sessions:
+    get:
+      tags: [auth]
+      summary: Sesi milik pemanggil yang masih hidup
+      description: |
+        Hanya sesi pemanggil sendiri, **termasuk untuk `owner`** — ini
+        satu-satunya baris di `docs/authorization.md` yang tidak punya
+        pengecualian owner. Tidak ada cara menanyakan sesi orang lain.
+
+        Sesi yang sudah kedaluwarsa tidak ikut: pertanyaan yang dijawab layar
+        ini adalah "apakah ada yang masuk padahal tidak seharusnya", dan baris
+        yang sudah tidak bisa mengautentikasi bukan jawabannya.
+
+        Diurutkan dari yang terakhir dipakai. Tidak ada paginasi: jumlah sesi
+        satu orang dibatasi jumlah perangkatnya, bukan jumlah datanya.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessions]
+                properties:
+                  sessions:
+                    type: array
+                    items: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      tags: [auth]
+      summary: Akhiri semua sesi **kecuali** yang sedang dipakai
+      description: |
+        Sesi yang mengirim permintaan ini sengaja dibiarkan hidup.
+        `POST /auth/logout` sudah mengakhiri sesi yang sedang dipakai, jadi
+        pemanggil yang ingin keluar dari mana-mana termasuk dari sini memanggil
+        keduanya. Satu endpoint yang mengeluarkan pemanggilnya sambil masih
+        berutang jawaban adalah setengah yang lebih buruk dari pasangan itu.
+
+        `revoked` dikembalikan karena itu satu-satunya cara pemanggil tahu ada
+        yang terjadi — "3 perangkat lain dikeluarkan" adalah konfirmasi yang
+        dicari orang yang baru saja kehilangan laptop.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked:
+                    type: integer
+                    description: Jumlah sesi yang diakhiri, tidak termasuk yang sedang dipakai.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /me/sessions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [auth]
+      summary: Akhiri satu sesi milik sendiri
+      description: |
+        Mengakhiri sesi yang sedang dipakai **diizinkan**: itu sesi pemanggil,
+        ia yang meminta, dan menolak berarti satu-satunya perangkat yang ada di
+        tangannya justru yang tidak bisa ia keluarkan. Kalau `id` adalah sesi
+        yang sedang dipakai, cookie sesinya ikut dikosongkan.
+      responses:
+        '204':
+          description: Sesi diakhiri.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: |
+            Sesi tidak ada, **atau** sesi itu milik orang lain. Keduanya dijawab
+            sama supaya tidak ada cara memastikan sebuah id sesi benar-benar ada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /projects:
     get:
       tags: [projects]
@@ -617,6 +700,34 @@ components:
         name:     { type: string }
         timezone: { type: string }
         role:     { $ref: '#/components/schemas/AccountRole' }
+
+    Session:
+      description: |
+        Satu sesi yang masih hidup, seperti yang dilihat pemiliknya sendiri.
+
+        **Tidak memuat token maupun digest-nya, dan tidak akan pernah.** Yang
+        dibutuhkan layar ini adalah mengenali sebuah sesi — kapan mulai, dari
+        apa, kapan terakhir dipakai — dan tak satu pun dari itu menuntut
+        kredensialnya. Endpoint daftar justru tempat satu field nyasar berubah
+        jadi token yang duduk di dalam body JSON.
+      type: object
+      required: [id, user_agent, created_at, last_seen_at, expires_at, current]
+      properties:
+        id:           { type: string, format: uuid }
+        user_agent:
+          type: string
+          description: |
+            Apa adanya dari header, dipotong di 512 karakter. Dikirim klien,
+            jadi ia petunjuk untuk mengenali perangkat, bukan fakta.
+        created_at:   { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        expires_at:   { type: string, format: date-time }
+        current:
+          type: boolean
+          description: |
+            Benar untuk sesi yang mengirim permintaan ini, supaya antarmuka bisa
+            menandainya "perangkat ini" dan memperingatkan sebelum seseorang
+            mengeluarkan dirinya sendiri.
 
     UserRef:
       description: Bentuk ringkas untuk disematkan. Tidak memuat email.

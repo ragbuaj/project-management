@@ -3,9 +3,11 @@ package route_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +33,19 @@ const (
 type store struct {
 	user     identityrepo.GetUserByEmailRow
 	sessions map[string]identityrepo.GetSessionByTokenHashRow
+	// Keyed by session id rather than digest: the listing query never sees a
+	// token, which is the point of it.
+	listable map[string]identityrepo.ListSessionsByUserRow
+	issued   int
+}
+
+// newSessionID hands out uuid-shaped ids because the column is uuid and the
+// service refuses anything else before it reaches the database. The fixture
+// used to hand out "session-1", which no real row could ever be.
+func (s *store) newSessionID() string {
+	s.issued++
+
+	return fmt.Sprintf("0199a1b2-c3d4-7e5f-8a9b-00000000%04d", s.issued)
 }
 
 func newStore(t *testing.T) *store {
@@ -51,6 +66,7 @@ func newStore(t *testing.T) *store {
 			Role:         "owner",
 		},
 		sessions: map[string]identityrepo.GetSessionByTokenHashRow{},
+		listable: map[string]identityrepo.ListSessionsByUserRow{},
 	}
 }
 
@@ -68,9 +84,18 @@ func (s *store) UpdateUserPasswordHash(context.Context, identityrepo.UpdateUserP
 
 func (s *store) CreateSession(_ context.Context, arg identityrepo.CreateSessionParams) (identityrepo.CreateSessionRow, error) {
 	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+	id := s.newSessionID()
+
+	s.listable[id] = identityrepo.ListSessionsByUserRow{
+		ID:         id,
+		UserAgent:  arg.UserAgent,
+		CreatedAt:  now,
+		LastSeenAt: now,
+		ExpiresAt:  arg.ExpiresAt,
+	}
 
 	s.sessions[string(arg.TokenHash)] = identityrepo.GetSessionByTokenHashRow{
-		ID:         "session-1",
+		ID:         id,
 		UserID:     arg.UserID,
 		CreatedAt:  now,
 		LastSeenAt: now,
@@ -82,7 +107,7 @@ func (s *store) CreateSession(_ context.Context, arg identityrepo.CreateSessionP
 	}
 
 	return identityrepo.CreateSessionRow{
-		ID:         "session-1",
+		ID:         id,
 		UserID:     arg.UserID,
 		CreatedAt:  now,
 		LastSeenAt: now,
@@ -103,18 +128,55 @@ func (s *store) TouchSession(context.Context, identityrepo.TouchSessionParams) (
 	return 1, nil
 }
 
-// The session-listing half of the repository. These routes have their own
-// tests; here they only have to exist so the mux can be built.
-func (s *store) ListSessionsByUser(context.Context, string) ([]identityrepo.ListSessionsByUserRow, error) {
-	return nil, nil
+// The session-listing half. It is functional rather than a stub because these
+// routes are the ones under test here; what the SQL enforces has its own tests
+// against a real database.
+func (s *store) ListSessionsByUser(_ context.Context, userID string) ([]identityrepo.ListSessionsByUserRow, error) {
+	out := []identityrepo.ListSessionsByUserRow{}
+
+	for _, row := range s.sessions {
+		if row.UserID != userID {
+			continue
+		}
+
+		if listed, ok := s.listable[row.ID]; ok {
+			out = append(out, listed)
+		}
+	}
+
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+
+	return out, nil
 }
 
-func (s *store) DeleteSessionForUser(context.Context, identityrepo.DeleteSessionForUserParams) (int64, error) {
-	return 1, nil
-}
+func (s *store) DeleteSessionForUser(_ context.Context, arg identityrepo.DeleteSessionForUserParams) (int64, error) {
+	for digest, row := range s.sessions {
+		if row.ID == arg.ID && row.UserID == arg.UserID {
+			delete(s.sessions, digest)
+			delete(s.listable, row.ID)
 
-func (s *store) DeleteOtherSessionsForUser(context.Context, identityrepo.DeleteOtherSessionsForUserParams) (int64, error) {
+			return 1, nil
+		}
+	}
+
 	return 0, nil
+}
+
+func (s *store) DeleteOtherSessionsForUser(_ context.Context, arg identityrepo.DeleteOtherSessionsForUserParams) (int64, error) {
+	var deleted int64
+
+	for digest, row := range s.sessions {
+		if row.UserID != arg.UserID || row.ID == arg.CurrentID {
+			continue
+		}
+
+		delete(s.sessions, digest)
+		delete(s.listable, row.ID)
+
+		deleted++
+	}
+
+	return deleted, nil
 }
 
 func (s *store) DeleteSessionByTokenHash(_ context.Context, hash []byte) (int64, error) {
@@ -330,6 +392,13 @@ func TestTheRoutesAreMountedWhereTheContractSaysTheyAre(t *testing.T) {
 		{http.MethodPost, "/api/v1/me", http.StatusMethodNotAllowed},
 		{http.MethodGet, "/api/v1/auth/me", http.StatusNotFound},
 		{http.MethodGet, "/me", http.StatusNotFound},
+		// The collection takes DELETE but not POST, and the single-session
+		// route is the reverse of the collection's GET. Both patterns are
+		// mounted, so ServeMux answers 405 rather than 404 — which is also how
+		// this test tells "mounted" from "typo in the path".
+		{http.MethodPost, "/api/v1/me/sessions", http.StatusMethodNotAllowed},
+		{http.MethodGet, "/api/v1/me/sessions/0199a1b2-c3d4-7e5f-8a9b-000000000001", http.StatusMethodNotAllowed},
+		{http.MethodGet, "/api/v1/me/session", http.StatusNotFound},
 	}
 
 	for _, c := range cases {
@@ -388,5 +457,259 @@ func TestADatabaseFailureIsNotAnsweredAsBeingSignedOut(t *testing.T) {
 
 	if body.Error.Code != "INTERNAL" {
 		t.Errorf("error code is %q, want INTERNAL", body.Error.Code)
+	}
+}
+
+// del sends a DELETE through the mux with the given cookies.
+func del(t *testing.T, mux *http.ServeMux, path string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, path, nil)
+	for _, cookie := range cookies {
+		r.AddCookie(cookie)
+	}
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+
+	return w
+}
+
+type sessionsBody struct {
+	Sessions []struct {
+		ID        string `json:"id"`
+		UserAgent string `json:"user_agent"`
+		Current   bool   `json:"current"`
+	} `json:"sessions"`
+}
+
+func listSessions(t *testing.T, mux *http.ServeMux, cookie *http.Cookie) sessionsBody {
+	t.Helper()
+
+	w := get(t, mux, "/api/v1/me/sessions", cookie)
+	if w.Code != http.StatusOK {
+		t.Fatalf("listing answered %d: %s", w.Code, w.Body)
+	}
+
+	var body sessionsBody
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("response is not the shape the contract declares: %v", err)
+	}
+
+	return body
+}
+
+// Signing in twice makes two sessions, and the listing has to show both and
+// mark the one asking.
+func TestTheListingShowsEverySessionAndMarksTheCurrentOne(t *testing.T) {
+	t.Parallel()
+
+	mux := newMux(t, newStore(t))
+
+	first := signIn(t, mux)
+	second := signIn(t, mux)
+
+	body := listSessions(t, mux, second)
+
+	if len(body.Sessions) != 2 {
+		t.Fatalf("got %d sessions, want 2", len(body.Sessions))
+	}
+
+	var current int
+
+	for _, s := range body.Sessions {
+		if s.Current {
+			current++
+		}
+	}
+
+	if current != 1 {
+		t.Errorf("%d sessions are marked current, want exactly 1", current)
+	}
+
+	// And the other cookie sees the same two sessions with the mark moved.
+	if got := listSessions(t, mux, first); len(got.Sessions) != 2 {
+		t.Errorf("the first session sees %d sessions, want 2", len(got.Sessions))
+	}
+}
+
+// No response from these endpoints may carry a token. This is the round trip
+// the service test cannot make: it checks the JSON that actually goes out.
+func TestNoSessionResponseCarriesATokenValue(t *testing.T) {
+	t.Parallel()
+
+	mux := newMux(t, newStore(t))
+	cookie := signIn(t, mux)
+
+	w := get(t, mux, "/api/v1/me/sessions", cookie)
+
+	if strings.Contains(w.Body.String(), cookie.Value) {
+		t.Error("the listing response contains the session token")
+	}
+
+	for _, forbidden := range []string{"token", "hash", "digest", "secret"} {
+		if strings.Contains(strings.ToLower(w.Body.String()), forbidden) {
+			t.Errorf("the listing response mentions %q", forbidden)
+		}
+	}
+}
+
+func TestRevokingOneSessionEndsItAndLeavesTheRest(t *testing.T) {
+	t.Parallel()
+
+	mux := newMux(t, newStore(t))
+
+	doomed := signIn(t, mux)
+	keeper := signIn(t, mux)
+
+	var doomedID string
+
+	for _, s := range listSessions(t, mux, doomed).Sessions {
+		if s.Current {
+			doomedID = s.ID
+		}
+	}
+
+	if w := del(t, mux, "/api/v1/me/sessions/"+doomedID, keeper); w.Code != http.StatusNoContent {
+		t.Fatalf("revoking answered %d: %s", w.Code, w.Body)
+	}
+
+	// The revoked cookie no longer authenticates anything.
+	if w := get(t, mux, "/api/v1/me", doomed); w.Code != http.StatusUnauthorized {
+		t.Errorf("the revoked session still authenticates: %d", w.Code)
+	}
+
+	if w := get(t, mux, "/api/v1/me", keeper); w.Code != http.StatusOK {
+		t.Errorf("revoking one session ended another: %d", w.Code)
+	}
+}
+
+// A session id that is not the caller's, and one that does not exist, are the
+// same 404. Telling them apart would confirm which session ids are real.
+func TestAnUnknownOrForeignSessionIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	mux := newMux(t, newStore(t))
+	cookie := signIn(t, mux)
+
+	for _, id := range []string{
+		"0199a1b2-c3d4-7e5f-8a9b-000000009999", // well-formed, nobody's
+		"not-a-uuid",                           // not even an id
+	} {
+		w := del(t, mux, "/api/v1/me/sessions/"+id, cookie)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("DELETE .../%s answered %d, want 404: %s", id, w.Code, w.Body)
+		}
+	}
+
+	// And the caller's own session survived all of that.
+	if w := get(t, mux, "/api/v1/me", cookie); w.Code != http.StatusOK {
+		t.Errorf("the caller's own session was lost: %d", w.Code)
+	}
+}
+
+// Ending the session making the request is allowed, and the cookie is cleared
+// on the way out — otherwise the caller keeps one that authenticates nothing
+// and finds out on their next click.
+func TestRevokingTheCurrentSessionClearsTheCookie(t *testing.T) {
+	t.Parallel()
+
+	mux := newMux(t, newStore(t))
+	cookie := signIn(t, mux)
+
+	var id string
+
+	for _, s := range listSessions(t, mux, cookie).Sessions {
+		if s.Current {
+			id = s.ID
+		}
+	}
+
+	w := del(t, mux, "/api/v1/me/sessions/"+id, cookie)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("revoking answered %d: %s", w.Code, w.Body)
+	}
+
+	var cleared bool
+
+	for _, c := range w.Result().Cookies() {
+		if c.Name == identityhttp.SessionCookieName && c.MaxAge < 0 {
+			cleared = true
+		}
+	}
+
+	if !cleared {
+		t.Error("the session cookie was not cleared after revoking the current session")
+	}
+
+	if w := get(t, mux, "/api/v1/me", cookie); w.Code != http.StatusUnauthorized {
+		t.Errorf("the revoked current session still authenticates: %d", w.Code)
+	}
+}
+
+// Signing out everywhere else keeps the caller signed in — an answer they
+// cannot receive while still signed in is not what they asked for.
+func TestSigningOutElsewhereKeepsTheCallerSignedIn(t *testing.T) {
+	t.Parallel()
+
+	mux := newMux(t, newStore(t))
+
+	laptop := signIn(t, mux)
+	phone := signIn(t, mux)
+	current := signIn(t, mux)
+
+	w := del(t, mux, "/api/v1/me/sessions", current)
+	if w.Code != http.StatusOK {
+		t.Fatalf("answered %d: %s", w.Code, w.Body)
+	}
+
+	var body struct {
+		Revoked int `json:"revoked"`
+	}
+
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("response is not the shape the contract declares: %v", err)
+	}
+
+	if body.Revoked != 2 {
+		t.Errorf("reported %d revoked, want 2", body.Revoked)
+	}
+
+	if w := get(t, mux, "/api/v1/me", current); w.Code != http.StatusOK {
+		t.Errorf("the caller was signed out by their own request: %d", w.Code)
+	}
+
+	for name, cookie := range map[string]*http.Cookie{"laptop": laptop, "phone": phone} {
+		if w := get(t, mux, "/api/v1/me", cookie); w.Code != http.StatusUnauthorized {
+			t.Errorf("the %s session survived: %d", name, w.Code)
+		}
+	}
+}
+
+// Every one of these needs a session. Mounted without the guard they would
+// answer about whoever the context happened to hold, which is nobody.
+func TestTheSessionEndpointsRefuseAnUnauthenticatedCaller(t *testing.T) {
+	t.Parallel()
+
+	mux := newMux(t, newStore(t))
+
+	cases := []struct {
+		method, path string
+	}{
+		{http.MethodGet, "/api/v1/me/sessions"},
+		{http.MethodDelete, "/api/v1/me/sessions"},
+		{http.MethodDelete, "/api/v1/me/sessions/0199a1b2-c3d4-7e5f-8a9b-000000000001"},
+	}
+
+	for _, tc := range cases {
+		r := httptest.NewRequestWithContext(t.Context(), tc.method, tc.path, nil)
+		w := httptest.NewRecorder()
+
+		mux.ServeHTTP(w, r)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s answered %d, want 401", tc.method, tc.path, w.Code)
+		}
 	}
 }
