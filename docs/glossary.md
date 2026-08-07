@@ -23,7 +23,7 @@ dokumen: Indonesia.
 |---|---|---|
 | **Project** | **Wadah teratas.** Memiliki kartu, status, workflow, sprint, epic, label, dan anggota. Punya `key` pendek (`PM`) yang membentuk nomor kartu (`PM-142`) | Bukan sama dengan Board. Satu project bisa punya beberapa board. Tidak ada wadah di atasnya — istilah "workspace" **tidak dipakai**, karena tabel berisi satu baris selamanya adalah antisipasi yang dilarang `rules/00-core.md` |
 | **Owner** | Pemilik instalasi. Satu orang. Salah satu nilai `users.role` | Bukan sekadar akun dengan hak lebih. Owner melihat dan melakukan apa pun di **setiap** folder dan project tanpa perlu jadi anggota — dan setiap aksesnya di luar keanggotaan tercatat ([ADR-0012](adr/0012-peran-akun-dan-akses-owner.md)) |
-| **Peran akun** | Nilai `users.role`: `owner`, `project_manager`, `member`, atau `viewer`. Satu-satunya sumber hak seseorang | Bukan peran per project. Seseorang membawa peran yang sama ke setiap folder dan project yang mengundangnya |
+| **Peran akun** | Nilai `users.role`: `owner`, `maintainer`, `contributor`, atau `viewer`. Satu-satunya sumber hak seseorang | Bukan peran per project. Seseorang membawa peran yang sama ke setiap folder dan project yang mengundangnya |
 | **Keanggotaan** | Baris di `project_members` atau `folder_members`: siapa ikut apa | Tidak membawa peran. Ia hanya menentukan **jangkauan** — folder dan project mana yang terlihat oleh seseorang |
 | **Board** | Sebuah **cara melihat** kartu milik satu project, tersusun dalam kolom | Board tidak memiliki kartu. Menghapus board tidak menghapus kartu |
 | **Column** | Lajur vertikal di sebuah board. Setiap kolom memetakan tepat satu Status | Bukan "List" (istilah Trello). Kolom bukan tempat penyimpanan, hanya tampilan |

@@ -16,8 +16,8 @@ yang berada dalam jangkauan seseorang.
 | Peran akun | Boleh membuat folder & project | Di dalam yang ia jadi anggotanya | Sumber kebenaran |
 |---|:--:|---|---|
 | `owner` | ya | segalanya, **tanpa perlu jadi anggota** | `users.role = 'owner'` |
-| `project_manager` | ya | mengatur bentuknya: status, board, sprint, anggota | `users.role` |
-| `member` | — | mengubah pekerjaan: kartu, komentar, catatan waktu | `users.role` |
+| `maintainer` | ya | mengatur bentuknya: status, board, sprint, anggota | `users.role` |
+| `contributor` | — | mengubah pekerjaan: kartu, komentar, catatan waktu | `users.role` |
 | `viewer` | — | membaca saja, tidak menulis apa pun | `users.role` |
 
 Dua peran lain bukan peran akun dan tidak pernah tersimpan di sana:
@@ -97,9 +97,9 @@ Legenda: **ya** = diizinkan · **—** = ditolak · **milik** = hanya baris mili
 Kolom peran di bawah adalah peran **akun** pemanggil. Kolom terakhir yang
 menyatakan syarat keanggotaannya.
 
-| Sumber daya | Aksi | guest | share | viewer | member | project_manager | Aturan kepemilikan |
+| Sumber daya | Aksi | guest | share | viewer | contributor | maintainer | Aturan kepemilikan |
 |---|---|:--:|:--:|:--:|:--:|:--:|---|
-| Folder | buat | — | — | — | — | ya | Hanya `project_manager` dan `owner`. Pembuat otomatis jadi anggota |
+| Folder | buat | — | — | — | — | ya | Hanya `maintainer` dan `owner`. Pembuat otomatis jadi anggota |
 | Folder | lihat | — | — | ya | ya | ya | Hanya folder tempat ia jadi anggota. Project di dalamnya yang bukan haknya tetap tidak terlihat |
 | Folder | ubah nama | — | — | — | — | ya | — |
 | Folder | hapus | — | — | — | — | ya | Project di dalamnya menjadi tanpa folder, **tidak** ikut terhapus |
@@ -113,10 +113,10 @@ menyatakan syarat keanggotaannya.
 Kolom peran di bawah adalah peran **akun** pemanggil. Kecuali `owner`, setiap
 baris juga menuntut keanggotaan — langsung, atau lewat folder induknya.
 
-| Sumber daya | Aksi | guest | share | viewer | member | project_manager | Aturan kepemilikan |
+| Sumber daya | Aksi | guest | share | viewer | contributor | maintainer | Aturan kepemilikan |
 |---|---|:--:|:--:|:--:|:--:|:--:|---|
 | Project | lihat | — | — | ya | ya | ya | Hanya project tempat ia jadi anggota, langsung maupun lewat folder. `owner` hanya kalau anggota |
-| Project | buat | — | — | — | — | ya | Hanya `project_manager` dan `owner`. Pembuat otomatis jadi anggota, dan tercatat di `projects.created_by`. Kalau dibuat di dalam folder, ia harus anggota folder itu |
+| Project | buat | — | — | — | — | ya | Hanya `maintainer` dan `owner`. Pembuat otomatis jadi anggota, dan tercatat di `projects.created_by`. Kalau dibuat di dalam folder, ia harus anggota folder itu |
 | Project | ubah nama/deskripsi | — | — | — | — | ya | Harus anggota |
 | Project | ubah `key` | — | — | — | — | — | **Tidak boleh siapa pun.** Mengubah `key` mengubah setiap nomor kartu yang pernah ditulis di commit, chat, dan dokumen |
 | Project | arsipkan | — | — | — | — | ya | Harus anggota |
@@ -132,7 +132,7 @@ baris juga menuntut keanggotaan — langsung, atau lewat folder induknya.
 
 ### Board, kolom, status
 
-| Sumber daya | Aksi | guest | share | viewer | member | project_manager | Aturan kepemilikan |
+| Sumber daya | Aksi | guest | share | viewer | contributor | maintainer | Aturan kepemilikan |
 |---|---|:--:|:--:|:--:|:--:|:--:|---|
 | Board | lihat | — | ya | ya | ya | ya | `share`: hanya board yang ditunjuk tautannya |
 | Board | buat / ubah / arsipkan | — | — | — | — | ya | — |
@@ -147,7 +147,7 @@ baris juga menuntut keanggotaan — langsung, atau lewat folder induknya.
 
 ### Kartu dan isinya
 
-| Sumber daya | Aksi | guest | share | viewer | member | project_manager | Aturan kepemilikan |
+| Sumber daya | Aksi | guest | share | viewer | contributor | maintainer | Aturan kepemilikan |
 |---|---|:--:|:--:|:--:|:--:|:--:|---|
 | Card | lihat | — | ya | ya | ya | ya | `share`: hanya kartu yang statusnya tampil di board itu |
 | Card | buat | — | — | — | ya | ya | — |
@@ -170,7 +170,7 @@ baris juga menuntut keanggotaan — langsung, atau lewat folder induknya.
 
 ### Perencanaan, waktu, laporan
 
-| Sumber daya | Aksi | guest | share | viewer | member | project_manager | Aturan kepemilikan |
+| Sumber daya | Aksi | guest | share | viewer | contributor | maintainer | Aturan kepemilikan |
 |---|---|:--:|:--:|:--:|:--:|:--:|---|
 | Sprint | lihat | — | — | ya | ya | ya | — |
 | Sprint | buat / ubah | — | — | — | ya | ya | — |
@@ -189,7 +189,7 @@ baris juga menuntut keanggotaan — langsung, atau lewat folder induknya.
 
 ### Otomatisasi, integrasi, akses program
 
-| Sumber daya | Aksi | guest | share | viewer | member | project_manager | Aturan kepemilikan |
+| Sumber daya | Aksi | guest | share | viewer | contributor | maintainer | Aturan kepemilikan |
 |---|---|:--:|:--:|:--:|:--:|:--:|---|
 | Automation rule | lihat | — | — | — | ya | ya | — |
 | Automation rule | buat / ubah / aktifkan | — | — | — | — | ya | — |

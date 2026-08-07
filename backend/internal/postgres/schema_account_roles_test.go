@@ -36,13 +36,13 @@ const insertUserWithRole = `
 func TestAnAccountRoleOutsideTheFourIsRejected(t *testing.T) {
 	ctx, tx := accountTx(t)
 
-	for _, role := range []string{"admin", "Owner", "manager", "", "superuser"} {
+	for _, role := range []string{"admin", "member", "maintainer_", "Owner", "", "superuser"} {
 		if err := attempt(t, ctx, tx, insertUserWithRole, "bad-"+role+"@example.test", false, role); err == nil {
 			t.Errorf("account role %q was accepted", role)
 		}
 	}
 
-	for _, role := range []string{"project_manager", "member", "viewer"} {
+	for _, role := range []string{"maintainer", "contributor", "viewer"} {
 		if err := attempt(t, ctx, tx, insertUserWithRole, role+"@example.test", false, role); err != nil {
 			t.Errorf("account role %q was rejected: %v", role, err)
 		}
@@ -82,8 +82,8 @@ func TestTheTwoOwnerColumnsCannotDisagreeWhileBothExist(t *testing.T) {
 		t.Error("role='owner' with is_owner=false was accepted")
 	}
 
-	if err := attempt(t, ctx, tx, insertUserWithRole, "claims-flag@example.test", true, "member"); err == nil {
-		t.Error("is_owner=true with role='member' was accepted")
+	if err := attempt(t, ctx, tx, insertUserWithRole, "claims-flag@example.test", true, "contributor"); err == nil {
+		t.Error("is_owner=true with role='contributor' was accepted")
 	}
 }
 
@@ -145,13 +145,13 @@ func TestAnInvitationCarriesAnAccountRoleAndNeverOwner(t *testing.T) {
 		INSERT INTO invitations (email, token_hash, invited_by, role, expires_at)
 		VALUES ($1, sha256(convert_to($1, 'UTF8')), $2, $3, now() + interval '7 days')`
 
-	for _, role := range []string{"owner", "admin", "Member", ""} {
+	for _, role := range []string{"owner", "admin", "member", "Contributor", ""} {
 		if err := attempt(t, ctx, tx, invite, role+"@example.test", invitedBy, role); err == nil {
 			t.Errorf("invitation role %q was accepted", role)
 		}
 	}
 
-	for _, role := range []string{"project_manager", "member", "viewer"} {
+	for _, role := range []string{"maintainer", "contributor", "viewer"} {
 		if err := attempt(t, ctx, tx, invite, role+"-inv@example.test", invitedBy, role); err != nil {
 			t.Errorf("invitation role %q was rejected: %v", role, err)
 		}

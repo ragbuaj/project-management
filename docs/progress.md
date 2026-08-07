@@ -204,8 +204,7 @@ menuntut cgo.
 
 | Pertanyaan | Sejak | Memblokir |
 |---|---|---|
-| Peran default untuk rekan yang diundang: `admin` (saran saya) atau pindahkan sebagian aksi dari `admin` ke `member`? | 2026-08-06 | Fase 2, bukan Fase 0 |
-| Peran default untuk anggota yang diundang ke folder: sama dengan default project (`admin`), atau lebih rendah? Folder membuka lebih banyak sekaligus | 2026-08-07 | Langkah 18 (undangan), bukan Langkah 17 |
+| Penyedia SMTP untuk produksi. `SMTP_HOST` dan kawan-kawan sudah wajib di [environments.md](environments.md), tapi layanannya belum dipilih | 2026-08-08 | Langkah 25 (deploy), bukan Langkah 18 — Mailpit menutup seluruh pengembangan lokal |
 
 
 Pertanyaan branch protection **tertutup pada 2026-08-07**. Repo dijadikan

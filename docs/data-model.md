@@ -109,8 +109,8 @@ CREATE TABLE users (
     timezone       text NOT NULL DEFAULT 'Asia/Jakarta',
     -- Satu-satunya sumber hak seseorang (ADR-0012). Keanggotaan hanya
     -- menentukan jangkauan, bukan peran.
-    role           text NOT NULL DEFAULT 'member'
-                   CHECK (role IN ('owner','project_manager','member','viewer')),
+    role           text NOT NULL DEFAULT 'contributor'
+                   CHECK (role IN ('owner','maintainer','contributor','viewer')),
     created_at     timestamptz NOT NULL DEFAULT now(),
     updated_at     timestamptz NOT NULL DEFAULT now(),
     deactivated_at timestamptz,
@@ -149,7 +149,7 @@ CREATE TABLE invitations (
     -- di dalam project. Undangan hanya dipakai untuk membuat akun pegawai
     -- baru; menambahkan pegawai yang sudah punya akun ke sebuah project
     -- berlaku langsung, tanpa undangan.
-    role        text NOT NULL CHECK (role IN ('project_manager','member','viewer')),
+    role        text NOT NULL CHECK (role IN ('maintainer','contributor','viewer')),
     expires_at  timestamptz NOT NULL,
     accepted_at timestamptz,
     created_at  timestamptz NOT NULL DEFAULT now()
@@ -408,7 +408,7 @@ CREATE TABLE activity_events (
     actor_id    uuid REFERENCES users(id) ON DELETE SET NULL,  -- NULL = sistem
     entity_type text NOT NULL CHECK (entity_type IN
                  ('card','board','column','status','comment','sprint','project',
-                  'checklist','label','member','automation','time_log','vcs_link')),
+                  'checklist','label','contributor','automation','time_log','vcs_link')),
     entity_id   uuid NOT NULL,
     action      text NOT NULL,      -- 'card.moved', 'comment.created', ...
     payload     jsonb NOT NULL DEFAULT '{}'::jsonb,  -- 🔒 bisa memuat data pribadi
