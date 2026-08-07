@@ -15,6 +15,7 @@ import (
 	"github.com/ragbuaj/project-management/backend/internal/config"
 	"github.com/ragbuaj/project-management/backend/internal/httpx"
 	"github.com/ragbuaj/project-management/backend/internal/postgres"
+	"github.com/ragbuaj/project-management/backend/internal/redis"
 )
 
 func main() {
@@ -48,6 +49,32 @@ func run() error {
 	}
 
 	defer pool.Close()
+
+	// The opposite of the pool above: docs/nfr.md states the application keeps
+	// running when Redis is down, so an unreachable Redis must not stop
+	// start-up. Only a malformed URL does, and that is a configuration
+	// mistake rather than an outage.
+	// Before the first client exists, so nothing the library reports escapes
+	// as unparseable plain text on stderr.
+	redis.UseLogger(log)
+
+	rdb, err := redis.New(cfg.RedisURL, config.RedisPoolSize)
+	if err != nil {
+		return fmt.Errorf("redis: %w", err)
+	}
+
+	defer func() { _ = rdb.Close() }()
+
+	// Reported once at start-up so the state is in the log rather than
+	// inferred later from whatever started behaving oddly. It changes nothing
+	// about whether the process runs.
+	pingCtx, cancelPing := context.WithTimeout(ctx, config.ReadyTimeout)
+	defer cancelPing()
+
+	if err := redis.Ping(pingCtx, rdb); err != nil {
+		log.Warn("redis is not answering; realtime and caching are degraded and the login rate limit fails closed",
+			slog.String("error", err.Error()))
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", httpx.Health())

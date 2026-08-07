@@ -44,6 +44,13 @@ const (
 	ReadyTimeout = 3 * time.Second
 )
 
+// RedisPoolSize is a constant rather than an environment variable because
+// nothing has needed to tune it. Redis serves one command per connection and
+// the commands here are single-key and short; DATABASE_MAX_CONNS is
+// configurable because PostgreSQL runs a process per connection and the ceiling
+// is a property of the server, which is not true here.
+const RedisPoolSize = 10
+
 const (
 	defaultHTTPAddr        = ":8080"
 	defaultLogLevel        = "info"
@@ -70,6 +77,8 @@ type Config struct {
 
 	DatabaseURL      string
 	DatabaseMaxConns int32
+
+	RedisURL string
 }
 
 // Lookup reads one environment variable. os.LookupEnv satisfies it. It is
@@ -136,6 +145,17 @@ func Load(lookup Lookup) (Config, error) {
 		cfg.DatabaseURL = rawDB
 	}
 
+	// Required even though the application survives Redis being down. Those are
+	// different failures: a Redis that is unreachable is handled at run time,
+	// a Redis nobody configured is a deployment that was never finished.
+	if rawRedis := value(lookup, "REDIS_URL", ""); rawRedis == "" {
+		problems = append(problems, missing("REDIS_URL"))
+	} else if err := validateRedisURL(rawRedis); err != nil {
+		problems = append(problems, err)
+	} else {
+		cfg.RedisURL = rawRedis
+	}
+
 	rawConns := value(lookup, "DATABASE_MAX_CONNS", strconv.Itoa(defaultDatabaseMaxConns))
 
 	switch n, err := strconv.ParseInt(rawConns, 10, 32); {
@@ -168,6 +188,26 @@ func validateDatabaseURL(raw string) error {
 
 	if u.Host == "" {
 		return invalidSecret("DATABASE_URL", "expected a host")
+	}
+
+	return nil
+}
+
+// validateRedisURL checks the shape without reporting what it was given: like
+// DATABASE_URL, this string can carry a password.
+func validateRedisURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return invalidSecret("REDIS_URL", "expected a redis:// URL")
+	}
+
+	// rediss:// is the TLS form and is what production should use.
+	if u.Scheme != "redis" && u.Scheme != "rediss" {
+		return invalidSecret("REDIS_URL", "expected the redis:// or rediss:// scheme")
+	}
+
+	if u.Host == "" {
+		return invalidSecret("REDIS_URL", "expected a host")
 	}
 
 	return nil
