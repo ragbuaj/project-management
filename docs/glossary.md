@@ -22,7 +22,9 @@ dokumen: Indonesia.
 | Istilah | Arti | Yang **bukan** artinya |
 |---|---|---|
 | **Project** | **Wadah teratas.** Memiliki kartu, status, workflow, sprint, epic, label, dan anggota. Punya `key` pendek (`PM`) yang membentuk nomor kartu (`PM-142`) | Bukan sama dengan Board. Satu project bisa punya beberapa board. Tidak ada wadah di atasnya — istilah "workspace" **tidak dipakai**, karena tabel berisi satu baris selamanya adalah antisipasi yang dilarang `rules/00-core.md` |
-| **Owner** | Pemilik instalasi. Satu orang. Ditandai `users.is_owner` | Bukan peran project. Owner bisa membuat project dan mengundang pengguna; di dalam project ia tetap tunduk pada peran, kecuali yang tertulis di [authorization.md](authorization.md) |
+| **Owner** | Pemilik instalasi. Satu orang. Salah satu nilai `users.role` | Bukan sekadar akun dengan hak lebih. Owner melihat dan melakukan apa pun di **setiap** folder dan project tanpa perlu jadi anggota — dan setiap aksesnya di luar keanggotaan tercatat ([ADR-0012](adr/0012-peran-akun-dan-akses-owner.md)) |
+| **Peran akun** | Nilai `users.role`: `owner`, `project_manager`, `member`, atau `viewer`. Satu-satunya sumber hak seseorang | Bukan peran per project. Seseorang membawa peran yang sama ke setiap folder dan project yang mengundangnya |
+| **Keanggotaan** | Baris di `project_members` atau `folder_members`: siapa ikut apa | Tidak membawa peran. Ia hanya menentukan **jangkauan** — folder dan project mana yang terlihat oleh seseorang |
 | **Board** | Sebuah **cara melihat** kartu milik satu project, tersusun dalam kolom | Board tidak memiliki kartu. Menghapus board tidak menghapus kartu |
 | **Column** | Lajur vertikal di sebuah board. Setiap kolom memetakan tepat satu Status | Bukan "List" (istilah Trello). Kolom bukan tempat penyimpanan, hanya tampilan |
 | **Status** | Keadaan sebenarnya sebuah kartu, dimiliki project. Contoh: `Todo`, `In Progress`, `In Review`, `Done` | Bukan properti board. Kartu punya status walau tidak ditampilkan di board mana pun |
@@ -59,7 +61,7 @@ Ditulis di sini supaya penolakannya bisa dirujuk saat review.
 | `list` untuk kolom board | `Column` | `list` bentrok dengan tampilan daftar (C2) dan dengan tipe data |
 | `state` untuk status kartu | `Status` | `state` dipakai untuk keadaan Sprint dan Automation Run |
 | `tag` | `Label` | Satu nama saja |
-| `user_role` sebagai kolom di `users` | `project_members.role` | Peran melekat pada keanggotaan project, bukan pada pengguna. Peran global tidak ada kecuali `users.is_owner` |
+| `project_members.role`, `folder_members.role` | `users.role` | **Dibalik pada 2026-08-08.** Sebelumnya peran melekat pada keanggotaan; sekarang pada akun ([ADR-0012](adr/0012-peran-akun-dan-akses-owner.md)). Penggunanya pegawai, dan jabatan pegawai tidak berubah karena ia pindah project |
 | `deleted` sebagai boolean | `deleted_at timestamptz` | Kapan dihapus selalu berguna; boolean membuang informasi |
 | `utils`, `helpers`, `common`, `shared` sebagai nama paket Go | Nama benda yang sebenarnya | Tanda desain yang belum selesai (`rules/20-go.md`) |
 
