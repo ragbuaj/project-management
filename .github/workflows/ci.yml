@@ -95,8 +95,20 @@ jobs:
         with:
           go-version-file: backend/go.mod
 
+      # Dipin, bukan @latest. Gerbang ini salah satu dari dua check wajib, jadi
+      # alat yang bisa berubah sendiri adalah gerbang yang bisa menghentikan
+      # seluruh merge tanpa satu pun commit di repo ini — persis yang terjadi
+      # pada oasdiff, yang rilis barunya mendadak menuntut Go 1.26.
+      #
+      # GOTOOLCHAIN=auto hanya di langkah ini, sama seperti di workflow kontrak
+      # API dan sqlc. v8.30.1 sendiri hanya menuntut Go 1.24.11 dan tidak
+      # membutuhkannya; ia dipasang supaya kenaikan pin berikutnya tidak gagal
+      # karena alasan yang sudah dikenali. Yang dilonggarkan adalah toolchain
+      # untuk **membangun alat**, bukan untuk membangun aplikasi.
       - name: Pasang gitleaks
-        run: go install github.com/zricethezav/gitleaks/v8@latest
+        env:
+          GOTOOLCHAIN: auto
+        run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
 
       - name: Pindai
         run: gitleaks git --no-banner
