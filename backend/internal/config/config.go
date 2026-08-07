@@ -8,10 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ragbuaj/project-management/backend/internal/httpx"
 )
 
 // ErrInvalid wraps every configuration failure so callers can tell it apart
@@ -79,6 +82,17 @@ type Config struct {
 	DatabaseMaxConns int32
 
 	RedisURL string
+
+	// TrustedProxies is the exact set of addresses whose X-Forwarded-For may
+	// be believed (ADR-0010). Empty is the safe default and the correct value
+	// for a server reached directly: with no entry here, no header is ever
+	// read, and every request is attributed to the socket it arrived on.
+	//
+	// It is deliberately not "every private range". An attacker who reaches
+	// the application from inside any such range would then be able to name
+	// whatever client address they liked, and every rate limit in the
+	// application would be one header away from useless.
+	TrustedProxies httpx.TrustedProxies
 }
 
 // Lookup reads one environment variable. os.LookupEnv satisfies it. It is
@@ -154,6 +168,12 @@ func Load(lookup Lookup) (Config, error) {
 		problems = append(problems, err)
 	} else {
 		cfg.RedisURL = rawRedis
+	}
+
+	if trusted, err := parseTrustedProxies(value(lookup, "TRUSTED_PROXIES", "")); err != nil {
+		problems = append(problems, err)
+	} else {
+		cfg.TrustedProxies = trusted
 	}
 
 	rawConns := value(lookup, "DATABASE_MAX_CONNS", strconv.Itoa(defaultDatabaseMaxConns))
@@ -267,4 +287,42 @@ func invalid(key, got, want string) error {
 // secret. It names the variable and what was expected, and never the value.
 func invalidSecret(key, want string) error {
 	return fmt.Errorf("%s is invalid: %s", key, want)
+}
+
+// parseTrustedProxies reads a comma-separated list of CIDR ranges.
+//
+// A bare address is accepted and read as a single-host range, because that is
+// how somebody will write it the first time and refusing it teaches nothing.
+// Anything else is refused at start-up rather than silently dropped: a proxy
+// that was meant to be trusted and is not would make the application attribute
+// every request to that proxy, and the symptom — one rate-limit bucket for the
+// whole world — looks nothing like a typo in an environment variable.
+func parseTrustedProxies(raw string) (httpx.TrustedProxies, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+
+	var out httpx.TrustedProxies
+
+	for entry := range strings.SplitSeq(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+
+		if prefix, err := netip.ParsePrefix(entry); err == nil {
+			out = append(out, prefix)
+
+			continue
+		}
+
+		addr, err := netip.ParseAddr(entry)
+		if err != nil {
+			return nil, fmt.Errorf("TRUSTED_PROXIES: %q is neither a CIDR range nor an address", entry)
+		}
+
+		out = append(out, netip.PrefixFrom(addr, addr.BitLen()))
+	}
+
+	return out, nil
 }
