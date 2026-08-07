@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `e45f46c`.
+**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `82b3e4d`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -11,10 +11,10 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 
 ## Ringkasan
 
-**33 selesai · 0 sedang · 11 belum**
+**34 selesai · 0 sedang · 10 belum**
 
 Fase 0 punya **31 sub-langkah**: Langkah 9, 11, dan 15 dipecah jadi beberapa PR
-atas permintaan pemilik. Dari 31 itu, **20 selesai dan 11 belum**. Ditambah 10
+atas permintaan pemilik. Dari 31 itu, **21 selesai dan 10 belum**. Ditambah 10
 item gerbang dokumen dan 3 item perubahan cakupan, semuanya selesai.
 
 **Skema dan fondasi backend selesai.** Tujuh migration, 33 tabel, 5 view
@@ -22,9 +22,10 @@ item gerbang dokumen dan 3 item perubahan cakupan, semuanya selesai.
 request ID, log terstruktur, recovery, bentuk error, rate limit — dan
 `internal/fracdex` sebagai penghasil urutan kartu (ADR-0003).
 
-Langkah 15 selesai: aplikasi sekarang bisa memasukkan orang, mengenalinya di
-permintaan berikutnya, dan mengeluarkannya. Yang tersisa dimulai dari Langkah
-16 (CSRF), lalu otorisasi dan seluruh frontend.
+Langkah 15 dan 16 selesai: aplikasi bisa memasukkan orang, mengenalinya di
+permintaan berikutnya, dan mengeluarkannya — dan sejak Langkah 16 setiap
+permintaan yang mengubah data wajib membawa pasangan CSRF. Yang tersisa dimulai
+dari Langkah 17 (otorisasi), lalu undangan dan seluruh frontend.
 
 > **Angka ringkasan pernah dua kali salah, dan keduanya dicatat di sini.**
 >
@@ -54,6 +55,9 @@ permintaan berikutnya, dan mengeluarkannya. Yang tersisa dimulai dari Langkah
 >
 > Rekonsiliasi ketujuh (2026-08-07, `b67d79c`): 34 baris, 23 `selesai`,
 > 11 `belum`. Jadi 33 · 0 · 11.
+>
+> Rekonsiliasi kedelapan (2026-08-07, `82b3e4d`): 34 baris, 24 `selesai`,
+> 10 `belum`. Jadi 34 · 0 · 10.
 
 ## Gerbang dokumen (sebelum baris kode pertama)
 
@@ -99,7 +103,7 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | 15a | `identity/domain` — password Argon2id | selesai | Rencana Fase 0 §15, ADR-0005 | PR #29 (`81bd24c`) |
 | 15b | `identity` — terbitkan, baca, dan cabut sesi | selesai | Rencana Fase 0 §15, ADR-0005 | PR #31, #32, #33, #34 (`f63728e`) |
 | 15c | `identity` — `/login`, `/logout`, `/me` | selesai | Rencana Fase 0 §15, ADR-0005 | PR #38, #39, #40, #41 (`b67d79c`) |
-| 16 | Middleware CSRF double-submit | belum | Rencana Fase 0 §16, ADR-0005 | — |
+| 16 | Middleware CSRF double-submit | selesai | Rencana Fase 0 §16, ADR-0005 | PR #46, #47 (`82b3e4d`) |
 | 17 | `internal/authz` + table-driven test empat pola | belum | Rencana Fase 0 §17, [authorization.md](authorization.md) | — |
 | 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | belum | Rencana Fase 0 §18 | — |
 | 19 | **Gerbang manusia:** arah desain tertulis | belum | Rencana Fase 0 §19, `rules/15-ui-design.md` §2 | — |
@@ -131,6 +135,12 @@ yang **mengubah cara kerja**, bukan sejarah.
 - **Target 400 baris per PR itu nyata.** Pada 2026-08-07 pekerjaan dipecah lima
   kali *sesudah* ditulis, yang berarti menulis ulang test untuk potongan yang
   berbeda. Putuskan potongannya sebelum menulis, bukan sesudah.
+- **Sejak Langkah 16, setiap `POST`, `PATCH`, `PUT`, dan `DELETE` wajib
+  membawa pasangan CSRF** — termasuk `/auth/login`. Memanggilnya dengan `curl`
+  sekarang menuntut dua langkah: satu permintaan aman untuk mengambil cookie
+  `__Host-csrf`, lalu salin nilainya ke header `X-CSRF-Token`. Permintaan yang
+  lupa itu dijawab `403`, bukan `401`, dan mudah tersalahartikan sebagai
+  masalah sesi.
 - **Mutasi yang tidak kompilasi tidak menguji apa pun.** Melepas satu pemakaian
   sering membuat impor jadi tak terpakai; `go test` berhenti di build dan
   hasilnya terbaca seperti test yang lemah. Ini terjadi tiga kali dalam satu
@@ -235,6 +245,10 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-07 | `oasdiff` dipin ke v1.28.0 dan dipasang dengan `GOTOOLCHAIN=auto` | Gerbang kontrak berhenti bisa memasang alatnya: `@latest` menuntut Go 1.26. Sekaligus menghapus `@latest` — gerbang yang alatnya tidak dipin bisa berubah perilakunya tanpa satu pun commit di repo ini | ya — ditanyakan dan disetujui pemilik pada 2026-08-07 |
 | 2026-08-07 | `password.minLength` di kontrak turun dari 8 ke 1, dengan `maxLength` 1024 | Kebijakan panjang ditegakkan saat password **dibuat**, bukan saat dipakai. Endpoint login yang menolak password pendek baru saja memberi tahu pemanggilnya apa aturannya. `oasdiff` tidak menganggapnya merusak | ya — lewat merge PR #39 |
 | 2026-08-07 | Normalisasi NFKC sebelum hashing dan sebelum verifikasi password | [ADR-0009](adr/0009-kebijakan-password.md). Tanpa itu password yang sama dari papan ketik berbeda gagal login. Konsekuensinya: normalisasi tidak bisa diubah lagi setelah ada hash tersimpan | ya |
+| 2026-08-07 | Langkah 16 dipecah jadi dua PR (#46 pemeriksaan, #47 penerbitan cookie & pemasangan) | Ditulis sekaligus jadi 573 baris. Kali ini potongannya diputuskan sebelum PR pertama dibuat, bukan sesudah | ya |
+| 2026-08-07 | Cookie CSRF bernama `__Host-csrf`, bukan `csrf` seperti di ADR-0005 dan kontrak | Double-submit hanya rahasia selama tidak ada pihak lain yang bisa menulis cookie-nya. Subdomain saudara yang menulis `csrf` biasa memegang kedua belahnya sekaligus; cookie `__Host-` bersifat host-only menurut definisinya, jadi ia tidak bisa. Ini kelemahan bawaan double-submit, dan awalan itu yang menutupnya | ya — lewat merge PR #47, yang deskripsinya menjelaskan penyimpangan ini |
+| 2026-08-07 | Cookie CSRF diterbitkan middleware pada permintaan aman mana pun, bukan oleh handler login seperti tersirat di kontrak | Kalau penerbitannya milik satu endpoint, endpoint yang mengubah data bergantung pada endpoint lain yang ingat menerbitkannya — lubang yang sama dengan "lupa memasang middleware", dari sisi sebaliknya. Akibat baiknya `POST /auth/login` ikut terlindungi dari login lintas-situs | ya — lewat merge PR #47 |
+| 2026-08-07 | Rantai middleware diangkat dari `run()` menjadi `apiHandler()` di `cmd/api` | ADR-0005 menaruh pemeriksaan CSRF di router justru supaya tidak ada route yang bisa ditambahkan tanpanya. Rantai yang hanya dirakit di dalam `run()` tidak bisa ditanyai apakah itu masih benar; sekarang ada dua test yang menanyakannya | ya — lewat merge PR #47 |
 | 2026-08-07 | `golang.org/x/crypto` jadi dependency runtime langsung | Argon2id diwajibkan ADR-0005 dan `rules/40-security.md`, dan pustaka standar Go tidak punya implementasinya. Turunannya `golang.org/x/sys` sudah ada di `go.sum`. `govulncheck` bersih | ya — ditanyakan dan disetujui pemilik pada 2026-08-07 |
 
 ## Cara memperbarui berkas ini
