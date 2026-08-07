@@ -36,10 +36,20 @@ jobs:
       # docs/environments.md. sqlc yang berbeda versi menghasilkan berkas yang
       # berbeda, dan job ini membandingkan berkas.
       #
-      # Dipasang lewat go install, bukan lewat action pihak ketiga: satu
-      # toolchain lebih sedikit yang harus dipercaya, dan versi Go-nya sudah
-      # berasal dari go.mod seperti job lain.
+      # Dipasang lewat go install, bukan lewat action pihak ketiga atau unduhan
+      # tarball: modul Go diverifikasi lewat checksum database, jadi tidak ada
+      # hash yang perlu ditulis tangan di berkas ini dan tidak ada toolchain
+      # tambahan yang harus dipercaya.
+      #
+      # GOTOOLCHAIN=auto hanya di langkah ini. sqlc 1.31.1 menuntut Go 1.26,
+      # sedangkan repo ini memakai 1.25.12; `setup-go` mengunci GOTOOLCHAIN ke
+      # `local`, sehingga go install gagal. Yang dilonggarkan adalah toolchain
+      # untuk **membangun alat**, bukan untuk membangun aplikasi — job Go tetap
+      # membaca versinya dari go.mod, dan itu tetap satu-satunya sumber versi
+      # Go untuk biner yang dikirim.
       - name: Pasang sqlc
+        env:
+          GOTOOLCHAIN: auto
         run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
 
       # Menangkap dua kegagalan yang senyap: query yang diubah tanpa generate
