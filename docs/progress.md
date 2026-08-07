@@ -53,10 +53,13 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | — | Penyaringan CI per-path + `go-version-file` | selesai | Perubahan cakupan, lihat bawah | PR #6 |
 | — | Catatan batas platform GitHub | selesai | Perubahan cakupan, lihat bawah | PR #7 (`216672e`) |
 | — | `progress.md` + log sesi | selesai | Skill `progress-tracking` | PR #8 (`ac65098`) |
-| 8 | goose + `cmd/migrate` + migration `0001` identitas | belum | Rencana Fase 0 §8 | — |
-| 9 | Migration `0002`–`0003` project, board, status, sprint, cards | belum | Rencana Fase 0 §9 | — |
-| 10 | Migration `0004` `activity_events` berpartisi + `outbox` | belum | Rencana Fase 0 §10 | — |
-| 11 | Migration `0005`–`0008` sisa 28 tabel | belum | Rencana Fase 0 §11 | — |
+| 8 | goose + `cmd/migrate` + migration `00001` identitas | **sedang** | Rencana Fase 0 §8 | PR A, belum merge |
+| 9a | Migration `00002` project, member, status, board, column, label | belum | Rencana Fase 0 §9 | PR B |
+| 9b | Migration `00003` sprints, cards, FK komposit | belum | Rencana Fase 0 §9 | PR C |
+| 10 | Migration `00004` `activity_events` berpartisi + `outbox` | belum | Rencana Fase 0 §10 | PR D |
+| 11a | Migration `00005` isi kartu: comments, checklists, links, card_labels | belum | Rencana Fase 0 §11 | PR E |
+| 11b | Migration `00006` notifikasi, waktu, filter, automation | belum | Rencana Fase 0 §11 | PR F |
+| 11c | Migration `00007` token, share link, VCS | belum | Rencana Fase 0 §11 | PR G |
 | 12 | `sqlc` + view `*_live` untuk soft delete | belum | Rencana Fase 0 §12 | — |
 | 13 | `internal/httpx` — request ID, log, recovery, bentuk error, rate limit | belum | Rencana Fase 0 §13 | — |
 | 14 | `internal/fracdex` + property test | belum | Rencana Fase 0 §14, ADR-0003 | — |
@@ -111,6 +114,7 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-06 | Klien Go untuk Redis ditunda ke Langkah 13 | Konsekuensi baris di atas — tidak ada kode yang membutuhkannya di Langkah 7 | ya — lewat merge PR #6 |
 | 2026-08-06 | Penyaringan CI dipindah ke level workflow; `GO_VERSION` diganti `go-version-file` | Job kontrak API menyalakan runner di setiap PR hanya untuk menemukan spec tidak berubah | ya |
 | 2026-08-06 | Catatan batas platform GitHub ditambahkan ke `environments.md` | Anjuran sebelumnya keliru: secret scanning tidak gratis untuk repo privat | ya |
+| 2026-08-07 | Langkah 8–11 dipecah jadi tujuh PR (A–G), masing-masing di bawah 250 baris | Permintaan pemilik. Dua PR sebelumnya masing-masing ~790 baris, jauh di atas target 400 di `rules/50-git-workflow.md` | ya |
 
 ## Cara memperbarui berkas ini
 

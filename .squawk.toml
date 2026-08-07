@@ -1,0 +1,32 @@
+# squawk — gerbang migration PostgreSQL.
+#
+# Setiap pengecualian di sini punya alasan tertulis. Pengecualian tanpa alasan
+# akan diwarisi orang berikutnya sebagai kebiasaan.
+
+excluded_rules = [
+  # Menuntut IF NOT EXISTS / CREATE OR REPLACE supaya migration bisa diulang
+  # kalau gagal di tengah jalan.
+  #
+  # Tidak berlaku di sini karena dua hal. goose mencatat versi yang sudah
+  # diterapkan, jadi satu berkas tidak pernah dijalankan dua kali. Dan
+  # PostgreSQL punya DDL transaksional, jadi migration yang gagal di tengah
+  # dibatalkan seluruhnya — tidak ada keadaan "separuh jadi" yang perlu
+  # ditambal IF NOT EXISTS.
+  #
+  # Yang lebih penting: IF NOT EXISTS justru MENYEMBUNYIKAN drift. Kalau sebuah
+  # tabel ternyata sudah ada padahal migration-nya belum tercatat, itu masalah
+  # yang harus berisik, bukan dilewati diam-diam.
+  "prefer-robust-stmts",
+]
+
+# require-concurrent-index-creation sengaja TIDAK dikecualikan di sini.
+#
+# Ia dimatikan per-pernyataan dengan `-- squawk-ignore` hanya pada indeks yang
+# dibuat untuk tabel yang lahir di berkas migration yang sama — di situ tidak
+# ada baris dan tidak ada sesi lain, jadi tidak ada yang bisa diblokir, dan
+# CONCURRENTLY malah mustahil karena tidak boleh berjalan di dalam transaksi.
+#
+# Untuk indeks pada tabel yang SUDAH ADA — misalnya indeks full-text pada
+# `cards` di Fase 3 — aturannya tetap menyala, dan memang di situlah ia
+# berguna. Migration seperti itu ditulis di berkasnya sendiri dengan
+# `-- +goose NO TRANSACTION` dan `CREATE INDEX CONCURRENTLY`.
