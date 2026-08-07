@@ -66,11 +66,18 @@ paths:
               required: [email, password]
               properties:
                 email: { type: string, format: email }
-                password: { type: string, minLength: 8 }
+                # Aturan panjangnya ditegakkan saat password dibuat, bukan saat
+                # dipakai — lihat ADR-0009. Di sini ia hanya menolak yang tidak
+                # mungkin pernah terdaftar, tanpa memberi tahu aturannya.
+                password: { type: string, minLength: 1, maxLength: 1024 }
       responses:
         '200':
           description: |
-            Sesi dibuat. Cookie `__Host-session` dan `csrf` di-set.
+            Sesi dibuat. Cookie `__Host-session` di-set: `HttpOnly`, `Secure`,
+            `SameSite=Lax`, `Path=/`.
+
+            Cookie `csrf` menyusul bersama middleware CSRF (Langkah 16); sampai
+            itu ada, endpoint yang mengubah data belum dilindunginya.
           content:
             application/json:
               schema:
@@ -78,10 +85,12 @@ paths:
                 required: [user]
                 properties:
                   user: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
         '401':
           description: |
             Kredensial salah. Respons **identik** untuk email yang tidak
-            terdaftar dan password yang salah, supaya tidak terjadi enumerasi akun.
+            terdaftar dan password yang salah — termasuk pesannya dan waktu
+            jawabnya (ADR-0010), supaya tidak terjadi enumerasi akun.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
