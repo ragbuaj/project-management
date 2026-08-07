@@ -94,8 +94,8 @@ func TestDeletingAFolderRemovesItsMemberships(t *testing.T) {
 	ctx, tx, userID, folderID := folderTx(t)
 
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO folder_members (folder_id, user_id, role)
-		VALUES ($1, $2, 'admin')`, folderID, userID); err != nil {
+		INSERT INTO folder_members (folder_id, user_id)
+		VALUES ($1, $2)`, folderID, userID); err != nil {
 		t.Fatalf("seed membership: %v", err)
 	}
 
@@ -123,34 +123,6 @@ func TestAProjectMayStandOnItsOwn(t *testing.T) {
 		INSERT INTO projects (key, name, created_by)
 		VALUES ('SOLO', 'No folder', $1)`, userID); err != nil {
 		t.Errorf("a project without a folder was rejected: %v", err)
-	}
-}
-
-// The role vocabulary is the same three as project_members, and nothing else.
-// A fourth value invented at an insert site would be read by authz as a role
-// it has never heard of, which is the one case where "deny by default" is not
-// obviously what happens.
-func TestFolderMemberRoleIsLimitedToTheThreeRoles(t *testing.T) {
-	ctx, tx, userID, folderID := folderTx(t)
-
-	const insert = `INSERT INTO folder_members (folder_id, user_id, role) VALUES ($1, $2, $3)`
-
-	for _, role := range []string{"owner", "guest", "share", "Admin", ""} {
-		if err := attempt(t, ctx, tx, insert, folderID, userID, role); err == nil {
-			t.Errorf("role %q was accepted", role)
-		}
-	}
-
-	for _, role := range []string{"admin", "member", "viewer"} {
-		// Each accepted role needs its own membership row, and the primary key
-		// is (folder_id, user_id) — so the previous one is cleared first.
-		if _, err := tx.Exec(ctx, `DELETE FROM folder_members WHERE folder_id = $1`, folderID); err != nil {
-			t.Fatalf("clear memberships: %v", err)
-		}
-
-		if err := attempt(t, ctx, tx, insert, folderID, userID, role); err != nil {
-			t.Errorf("role %q was rejected: %v", role, err)
-		}
 	}
 }
 

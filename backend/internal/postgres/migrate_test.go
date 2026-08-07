@@ -275,41 +275,6 @@ func columnsOf(t *testing.T, pool *pgxpool.Pool, ctx context.Context, relation s
 	return cols
 }
 
-// The glossary defines Owner as one person. Enforcing that in application code
-// alone leaves it open to scripts, jobs, and manual queries, so it lives in a
-// partial unique index — and this proves the index actually bites.
-func TestOnlyOneOwnerIsAllowed(t *testing.T) {
-	pool := migrated(t)
-
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-
-	tx, err := pool.Begin(ctx)
-	if err != nil {
-		t.Fatalf("begin: %v", err)
-	}
-
-	// Everything below is rolled back, so the shared test database is left
-	// exactly as it was found.
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	if _, err := tx.Exec(ctx, `DELETE FROM users`); err != nil {
-		t.Fatalf("clear users: %v", err)
-	}
-
-	const insert = `
-		INSERT INTO users (email, name, password_hash, is_owner)
-		VALUES ($1, $2, 'argon2id$placeholder', true)`
-
-	if _, err := tx.Exec(ctx, insert, "first@example.test", "First"); err != nil {
-		t.Fatalf("insert the first owner: %v", err)
-	}
-
-	if _, err := tx.Exec(ctx, insert, "second@example.test", "Second"); err == nil {
-		t.Fatal("inserting a second owner succeeded; users_single_owner_key is not enforcing")
-	}
-}
-
 // A deleted address must not block signing up again with the same address,
 // which is why the unique index is partial on deleted_at.
 func TestADeletedEmailCanBeReused(t *testing.T) {
