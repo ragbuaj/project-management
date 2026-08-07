@@ -101,20 +101,7 @@ func run() error {
 		Probe: pool.Ping,
 	}))
 
-	// Order is not interchangeable.
-	//
-	// RequestID is outermost, so everything below it can name the request.
-	// Recover sits inside LogRequests rather than outside: a panic unwinds
-	// through every frame above it, so a Recover placed outside would take the
-	// panic before LogRequests could write its line, and the request would
-	// vanish from the log it is supposed to appear in. This way Recover turns
-	// the panic into a 500, returns normally, and LogRequests records it as
-	// what it became.
-	handler := httpx.Chain(mux,
-		httpx.RequestID,
-		httpx.LogRequests(log),
-		httpx.Recover(log),
-	)
+	handler := apiHandler(mux, log)
 
 	var lc net.ListenConfig
 
@@ -135,6 +122,32 @@ func run() error {
 	)
 
 	return httpx.Serve(ctx, srv, ln, config.ShutdownTimeout, log)
+}
+
+// apiHandler wraps mux in the middleware every request passes through.
+//
+// It is a function rather than four lines inside run because ADR-0005 puts the
+// CSRF check at the router precisely so that no route can be added without it,
+// and a chain that is only assembled inside run cannot be asked whether that
+// is still true.
+//
+// Order is not interchangeable.
+//
+// RequestID is outermost, so everything below it can name the request. Recover
+// sits inside LogRequests rather than outside: a panic unwinds through every
+// frame above it, so a Recover placed outside would take the panic before
+// LogRequests could write its line, and the request would vanish from the log
+// it is supposed to appear in. This way Recover turns the panic into a 500,
+// returns normally, and LogRequests records it as what it became.
+//
+// CSRF is innermost, so a refusal is still logged and still carries an id.
+func apiHandler(mux http.Handler, log *slog.Logger) http.Handler {
+	return httpx.Chain(mux,
+		httpx.RequestID,
+		httpx.LogRequests(log),
+		httpx.Recover(log),
+		httpx.CSRF(log),
+	)
 }
 
 // newLogger picks the format from the environment: readable text locally,

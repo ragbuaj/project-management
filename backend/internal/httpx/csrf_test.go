@@ -12,8 +12,8 @@ import (
 	"github.com/ragbuaj/project-management/backend/internal/httpx"
 )
 
-// aToken is shaped like the value this server will issue: 32 bytes, base64url,
-// no padding. Spelled out rather than borrowed from the production code so a
+// aToken is shaped like the value this server issues: 32 bytes, base64url, no
+// padding. Spelled out rather than borrowed from the production code so a
 // change to the shape shows up here as a failure rather than as agreement.
 var aToken = base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x2a}, 32))
 
@@ -66,6 +66,26 @@ func guardedBy(t *testing.T, log *slog.Logger) (http.Handler, *bool) {
 	)
 
 	return h, reached
+}
+
+// issuedCSRFCookie returns the cookie the response sets, or nil if it sets
+// none. Set-Cookie is parsed rather than read off ResponseRecorder.Result(),
+// which hands back a body nobody here wants to own.
+func issuedCSRFCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
+	t.Helper()
+
+	for _, line := range rec.Header().Values("Set-Cookie") {
+		cookie, err := http.ParseSetCookie(line)
+		if err != nil {
+			t.Fatalf("parse Set-Cookie %q: %v", line, err)
+		}
+
+		if cookie.Name == httpx.CSRFCookieName {
+			return cookie
+		}
+	}
+
+	return nil
 }
 
 // The whole point of the middleware: a cross-site form can make a browser send
@@ -174,7 +194,10 @@ func TestAMatchingPairIsLetThrough(t *testing.T) {
 
 // Reading is not changing. A GET that had to carry a token would mean every
 // link into the application needed one, which is not something a link can do.
-func TestSafeMethodsAreServedWithoutThePair(t *testing.T) {
+//
+// A safe request is also where the token comes from, so each of these has to
+// leave the caller able to make an unsafe one afterwards.
+func TestSafeMethodsAreServedWithoutThePairAndIssueTheCookie(t *testing.T) {
 	t.Parallel()
 
 	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions} {
@@ -192,7 +215,109 @@ func TestSafeMethodsAreServedWithoutThePair(t *testing.T) {
 			if !*reached {
 				t.Error("a safe method was refused")
 			}
+
+			cookie := issuedCSRFCookie(t, rec)
+			if cookie == nil {
+				t.Fatal("no csrf cookie was issued, so nothing can ever POST")
+			}
+
+			if raw, err := base64.RawURLEncoding.DecodeString(cookie.Value); err != nil || len(raw) != 32 {
+				t.Errorf("issued token is not 32 base64url bytes: %q (err %v)", cookie.Value, err)
+			}
 		})
+	}
+}
+
+// Attributes ADR-0005 asks for. HttpOnly is the one that must be off — the SPA
+// reads this cookie — and Secure and the __Host- constraints are the ones that
+// must hold, or the browser rejects the cookie outright.
+func TestTheIssuedCookieCarriesTheAttributesTheSPANeeds(t *testing.T) {
+	t.Parallel()
+
+	h, _ := guardedBy(t, discardLogger())
+
+	cookie := issuedCSRFCookie(t, csrfCall{method: http.MethodGet}.do(t, h))
+	if cookie == nil {
+		t.Fatal("no csrf cookie was issued")
+	}
+
+	if cookie.HttpOnly {
+		t.Error("the cookie is HttpOnly, so the SPA cannot read it and can never send the header")
+	}
+
+	if !cookie.Secure {
+		t.Error("the cookie is not Secure")
+	}
+
+	if cookie.Path != "/" {
+		t.Errorf("path = %q, want / — a __Host- cookie is rejected otherwise", cookie.Path)
+	}
+
+	if cookie.Domain != "" {
+		t.Errorf("domain = %q, want empty — a __Host- cookie may not name one", cookie.Domain)
+	}
+
+	if cookie.SameSite != http.SameSiteLaxMode {
+		t.Errorf("samesite = %v, want Lax", cookie.SameSite)
+	}
+}
+
+// Reissuing on every request would race the SPA: a page that read the cookie,
+// then sent it, would be answered with a different one and fail its next call.
+func TestAValidCookieIsLeftAlone(t *testing.T) {
+	t.Parallel()
+
+	h, _ := guardedBy(t, discardLogger())
+
+	rec := csrfCall{method: http.MethodGet, cookie: aToken}.do(t, h)
+
+	if cookie := issuedCSRFCookie(t, rec); cookie != nil {
+		t.Errorf("a valid cookie was replaced with %q", cookie.Value)
+	}
+}
+
+func TestEachClientGetsItsOwnToken(t *testing.T) {
+	t.Parallel()
+
+	h, _ := guardedBy(t, discardLogger())
+
+	first := issuedCSRFCookie(t, csrfCall{method: http.MethodGet}.do(t, h))
+	second := issuedCSRFCookie(t, csrfCall{method: http.MethodGet}.do(t, h))
+
+	if first == nil || second == nil {
+		t.Fatal("a request went without a cookie")
+	}
+
+	if first.Value == second.Value {
+		t.Error("two clients were handed the same token")
+	}
+}
+
+// A value this server did not issue must be replaced, not carried around. If
+// it were kept, a client echoing it would keep matching it — the pair would
+// hold while resting on a token of unknown origin.
+func TestAMalformedCookieIsRefusedEvenWhenTheHeaderEchoesIt(t *testing.T) {
+	t.Parallel()
+
+	h, reached := guardedBy(t, discardLogger())
+
+	rec := csrfCall{method: http.MethodPost, cookie: "not-a-token", header: "not-a-token"}.do(t, h)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403 — a token nobody issued was accepted", rec.Code)
+	}
+
+	if *reached {
+		t.Error("the handler ran on a self-supplied token")
+	}
+
+	replacement := issuedCSRFCookie(t, rec)
+	if replacement == nil {
+		t.Fatal("the malformed cookie was not replaced, so this client can never succeed")
+	}
+
+	if replacement.Value == "not-a-token" {
+		t.Error("the replacement is the malformed value again")
 	}
 }
 

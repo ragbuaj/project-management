@@ -27,9 +27,16 @@ info:
 
     - **Browser**: cookie sesi `__Host-session` (`HttpOnly`, `Secure`,
       `SameSite=Lax`). Permintaan yang mengubah data wajib membawa header
-      `X-CSRF-Token` yang cocok dengan cookie `csrf`.
+      `X-CSRF-Token` yang cocok dengan cookie `__Host-csrf`.
     - **Program** (Fase 9): `Authorization: Bearer pmt_...`. Dikecualikan dari
       pemeriksaan CSRF. Token tidak pernah diterima dari query string.
+
+    Cookie `__Host-csrf` (**tanpa** `HttpOnly` — klien memang harus
+    membacanya) diterbitkan server pada permintaan aman mana pun yang datang
+    tanpa membawanya. Jadi klien memuat halaman atau memanggil satu `GET` lebih
+    dulu, lalu menyalin nilainya ke header pada setiap `POST`, `PATCH`, `PUT`,
+    dan `DELETE`. Pasangan yang tidak cocok dijawab `403`, termasuk pada
+    `/auth/login` dan `/auth/logout`.
 
     Rincian di `docs/adr/0005-autentikasi-sesi-cookie.md`.
 
@@ -75,9 +82,6 @@ paths:
           description: |
             Sesi dibuat. Cookie `__Host-session` di-set: `HttpOnly`, `Secure`,
             `SameSite=Lax`, `Path=/`.
-
-            Cookie `csrf` menyusul bersama middleware CSRF (Langkah 16); sampai
-            itu ada, endpoint yang mengubah data belum dilindunginya.
           content:
             application/json:
               schema:
@@ -94,6 +98,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /auth/logout:
@@ -108,6 +113,7 @@ paths:
             yang tidak membawa sesi sama sekali: pemanggilnya sama-sama berakhir
             dalam keadaan keluar, dan membedakannya hanya memberi tahu apakah
             cookie yang dipegangnya nyata.
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /me:
     get:
@@ -515,7 +521,10 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     Forbidden:
-      description: Terautentikasi, boleh melihat sumber daya, tapi tidak berhak atas aksinya
+      description: |
+        Terautentikasi, boleh melihat sumber daya, tapi tidak berhak atas
+        aksinya — **atau** pasangan CSRF tidak cocok pada permintaan yang
+        mengubah data.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
