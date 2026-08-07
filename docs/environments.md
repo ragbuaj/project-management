@@ -98,6 +98,38 @@ disimpan terenkripsi di `vcs_connections`, bukan di environment.
 | Kalau pernah ter-commit | Rahasia itu **sudah bocor**. Rotasi. Menghapusnya dari riwayat git tidak cukup |
 | Di log | Tidak pernah. Termasuk saat panik dan saat mencetak konfigurasi ketika start |
 
+## Batas platform GitHub
+
+Repositori ini pribadi dan privat — bukan milik organisasi maupun enterprise.
+Sejumlah gerbang di sisi GitHub karena itu tidak tersedia, dan catatan ini ada
+supaya tidak ada yang menganjurkannya lagi sebagai "tinggal dinyalakan".
+
+| Fitur GitHub | Ketersediaan | Pengganti di repo ini |
+|---|---|---|
+| **Secret scanning + push protection** | Gratis hanya untuk repo **publik**. Di repo privat ia bagian dari GitHub Advanced Security / Secret Protection — produk berbayar. **Tidak tersedia di sini** | `gitleaks` di `pre-commit` **dan** di CI atas seluruh riwayat (`fetch-depth: 0`) |
+| **Branch protection / rulesets** | Belum diverifikasi. Buka `Settings → Branches` atau `Settings → Rules`; kalau opsinya tidak ada, itu batas paket | Setiap perubahan lewat PR, CI hijau sebelum merge, `main` tidak pernah disentuh langsung |
+| **Code scanning (CodeQL)** | Bagian dari GHAS pada repo privat | `golangci-lint` dengan `gosec`, dan `govulncheck` di `pre-push` dan CI |
+| **Dependabot alerts** | Belum diverifikasi untuk paket ini. Periksa `Settings → Code security` | `govulncheck` + `pnpm audit` di CI, lockfile di-commit |
+
+### Konsekuensi yang harus disadari
+
+Tanpa push protection, tidak ada yang menolak rahasia **di sisi server** sebelum
+ia menyentuh mesin GitHub. Pertahanan terakhir kita berjalan di mesin
+pengembang, dan pertahanan di mesin pengembang bisa dilewati dengan
+`--no-verify`.
+
+Ini satu-satunya tempat di seluruh proyek yang bergantung pada disiplin
+manusia, dan itu bukan mekanisme yang bisa diandalkan. Karena itu:
+
+- **`--no-verify` hanya untuk keadaan darurat**, dan setiap pemakaiannya
+  dinyatakan di PR — bukan didiamkan.
+- Kalau sebuah rahasia tetap lolos, yang berlaku adalah aturan di
+  [threat-model.md](threat-model.md): rahasia itu **sudah bocor**. Rotasi.
+  Menghapusnya dari riwayat git tidak cukup.
+
+Kalau suatu hari repositori ini pindah ke organisasi berbayar, tiga baris
+pertama di tabel atas layak dinyalakan dan catatan ini diperbarui.
+
 ## Layanan eksternal
 
 | Layanan | Dipakai untuk | Sandbox | Fase | Kalau mati |

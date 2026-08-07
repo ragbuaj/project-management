@@ -67,6 +67,11 @@ lefthook install
 `--no-verify` ada untuk keadaan darurat. Setiap pemakaiannya dinyatakan di PR,
 bukan jadi kebiasaan — yang di lokal bisa dilewati, yang di CI tidak.
 
+Gerbang di sisi GitHub sendiri — secret scanning, push protection, code
+scanning — **tidak tersedia** untuk repositori pribadi yang privat. Apa yang
+kita pakai sebagai gantinya, dan apa risiko yang tersisa, ada di
+[environments.md](docs/environments.md#batas-platform-github).
+
 ## Lisensi
 
 Belum ditentukan. Repositori privat.
