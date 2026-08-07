@@ -44,6 +44,14 @@ sebuah project tidak bisa membaca kartunya. Yang bisa dilakukan owner ada di
 tabel terpisah di bawah. Ini disengaja: instalasi ini menyimpan pekerjaan rekan,
 dan "saya pemilik server" bukan alasan untuk membaca semuanya tanpa jejak.
 
+Kolom `owner` di matriks karena itu **hanya** diisi untuk baris yang muncul di
+daftar tertutup itu. Sampai 2026-08-08 tiga baris pengelolaan anggota keliru
+memberinya `ya` sekaligus, padahal daftar tertutupnya tidak memuatnya —
+ditemukan saat baris-baris ini diterjemahkan menjadi tabel di `internal/authz`,
+dan diselesaikan dengan memenangkan daftar tertutupnya. Owner yang perlu
+mengelola anggota sebuah project menambahkan dirinya sebagai `admin` lebih
+dulu: langkah yang tercatat dan yang memberi tahu anggotanya.
+
 ## Aturan yang berlaku umum
 
 Berlaku di seluruh matriks, tidak diulang per baris:
@@ -103,9 +111,9 @@ project dan peran folder induknya.
 | Project | arsipkan | — | — | — | — | ya | — | Harus anggota |
 | Project | hapus permanen | — | — | — | — | — | ya | Harus anggota. Butuh konfirmasi mengetik `key` |
 | Anggota | lihat daftar | — | — | ya | ya | ya | ya | Hanya anggota project itu |
-| Anggota | undang | — | — | — | — | ya | ya | — |
-| Anggota | ubah peran | — | — | — | — | ya | ya | **Tidak boleh mengubah peran diri sendiri.** Tidak boleh menurunkan `admin` terakhir |
-| Anggota | keluarkan | — | — | — | — | ya | ya | Tidak boleh mengeluarkan diri sendiri lewat endpoint ini; ada endpoint "keluar" terpisah |
+| Anggota | undang | — | — | — | — | ya | — | Undangan hanya menyasar orang yang **sudah** punya akun |
+| Anggota | ubah peran | — | — | — | — | ya | — | **Tidak boleh mengubah peran diri sendiri.** Tidak boleh menurunkan `admin` terakhir |
+| Anggota | keluarkan | — | — | — | — | ya | — | Tidak boleh mengeluarkan diri sendiri lewat endpoint ini; ada endpoint "keluar" terpisah |
 | Pengguna | undang ke instalasi | — | — | — | — | — | ya | Pendaftaran mandiri adalah non-goal |
 | Pengguna | nonaktifkan | — | — | — | — | — | ya | Tidak boleh menonaktifkan diri sendiri |
 | Pengguna | ubah profil sendiri | — | — | milik | milik | milik | milik | — |
