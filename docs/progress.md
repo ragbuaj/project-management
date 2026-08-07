@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `17cd30c`.
+**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `323084a`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -11,10 +11,10 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 
 ## Ringkasan
 
-**35 selesai · 0 sedang · 10 belum**
+**36 selesai · 0 sedang · 9 belum**
 
 Fase 0 punya **31 sub-langkah**: Langkah 9, 11, dan 15 dipecah jadi beberapa PR
-atas permintaan pemilik. Dari 31 itu, **21 selesai dan 10 belum**. Ditambah 10
+atas permintaan pemilik. Dari 31 itu, **22 selesai dan 9 belum**. Ditambah 10
 item gerbang dokumen dan 4 item perubahan cakupan, semuanya selesai.
 
 **Skema dan fondasi backend selesai.** Tujuh migration, 33 tabel, 5 view
@@ -25,8 +25,16 @@ request ID, log terstruktur, recovery, bentuk error, rate limit — dan
 Langkah 15 dan 16 selesai: aplikasi bisa memasukkan orang, mengenalinya di
 permintaan berikutnya, dan mengeluarkannya — dan sejak Langkah 16 setiap
 permintaan yang mengubah data wajib membawa pasangan CSRF. Skema folder sudah masuk
-(`00008`), jadi yang tersisa dimulai dari Langkah 17 (otorisasi), lalu undangan
-dan seluruh frontend.
+(`00008`) dan Langkah 17 selesai: `internal/authz` memutuskan aksi project dan
+folder dari satu tabel, dengan `EffectiveRole` sebagai satu-satunya tempat
+pewarisan folder hidup. Yang tersisa dimulai dari Langkah 18 (undangan, reset
+password, daftar sesi), lalu seluruh frontend.
+
+**Yang belum punya implementasi:** antarmuka `authz.Memberships` sengaja tanpa
+implementasi sampai modul project lahir di Fase 1 — `project_members` dan
+`folder_members` miliknya, dan `sqlc.yaml` memegang satu entri per modul. Pola
+yang sama dengan `httpx.Limiter`, yang implementasi Redis-nya menyusul di
+Langkah 18.
 
 **Model otorisasi berubah pada 2026-08-07.** Setiap akun kini boleh membuat
 project, dan project dikelompokkan ke dalam **folder** yang keanggotaannya
@@ -72,6 +80,9 @@ dibangun untuk keduanya sejak baris pertamanya.
 >
 > Rekonsiliasi kesepuluh (2026-08-07, `17cd30c`): 35 baris, 25 `selesai`,
 > 10 `belum`. Jadi 35 · 0 · 10.
+>
+> Rekonsiliasi kesebelas (2026-08-08, `323084a`): 35 baris, 26 `selesai`,
+> 9 `belum`. Jadi 36 · 0 · 9.
 
 ## Gerbang dokumen (sebelum baris kode pertama)
 
@@ -119,7 +130,7 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | 15c | `identity` — `/login`, `/logout`, `/me` | selesai | Rencana Fase 0 §15, ADR-0005 | PR #38, #39, #40, #41 (`b67d79c`) |
 | 16 | Middleware CSRF double-submit | selesai | Rencana Fase 0 §16, ADR-0005 | PR #46, #47 (`82b3e4d`) |
 | — | Migration `00008` `folders`, `folder_members`, `projects.folder_id` | selesai | Perubahan cakupan, lihat bawah; [ADR-0011](adr/0011-folder-dan-pewarisan-keanggotaan.md) | PR #51 (`17cd30c`) |
-| 17 | `internal/authz` + table-driven test **enam** pola | belum | Rencana Fase 0 §17, [authorization.md](authorization.md), ADR-0011 | — |
+| 17 | `internal/authz` + table-driven test **enam** pola | selesai | Rencana Fase 0 §17, [authorization.md](authorization.md), ADR-0011 | PR #53, #54, #55 (`323084a`) |
 | 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | belum | Rencana Fase 0 §18 | — |
 | 19 | **Gerbang manusia:** arah desain tertulis | belum | Rencana Fase 0 §19, `rules/15-ui-design.md` §2 | — |
 | 20 | Scaffold Vite + shadcn + token | belum | Rencana Fase 0 §20 | — |
@@ -286,6 +297,8 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-07 | Repo dijadikan publik | Branch protection, ruleset, *secret scanning*, dan *push protection* semuanya digerbang plan: gratis hanya untuk repo publik. Push protection adalah kontrol yang sebelumnya tidak ada — ia menolak secret sebelum commit-nya mendarat, sedangkan `gitleaks` di CI baru berteriak setelah ter-push | ya — keputusan pemilik pada 2026-08-07 |
 | 2026-08-07 | Log sesi (`docs/sessions/`) dilepas dari repo dan masuk `.gitignore` | Permintaan pemilik, menyusul repo jadi publik. Isinya catatan proses, bukan dokumentasi proyek. Konsekuensinya: klon baru tidak membawa riwayat sesi, jadi `progress.md` menjadi satu-satunya pembawa konteks antar-sesi yang ikut repo | ya |
 | 2026-08-07 | `oasdiff` dipin ke v1.28.0 dan dipasang dengan `GOTOOLCHAIN=auto` | Gerbang kontrak berhenti bisa memasang alatnya: `@latest` menuntut Go 1.26. Sekaligus menghapus `@latest` — gerbang yang alatnya tidak dipin bisa berubah perilakunya tanpa satu pun commit di repo ini | ya — ditanyakan dan disetujui pemilik pada 2026-08-07 |
+| 2026-08-08 | Kolom `owner` di tiga baris pengelolaan anggota diubah dari `ya` menjadi `—` di [authorization.md](authorization.md) | Matriks dan daftar tertutup di dokumen yang sama saling bertentangan; daftar itu menyatakan dirinya tertutup dan tidak memuat ketiganya. Ditemukan saat menerjemahkan matriks jadi tabel `internal/authz`. Daftar tertutup yang dimenangkan karena lebih ketat dan tidak menghilangkan apa pun: owner menambahkan dirinya sebagai `admin` lebih dulu, langkah yang tercatat dan memberi tahu anggota | ya — lewat merge PR #55, yang deskripsinya menjelaskan pilihan ini |
+| 2026-08-08 | `Project \| hapus permanen` ditegakkan sebagai **owner dan anggota**, bukan salah satunya | Ambiguitas yang sama: matriks menulis "Harus anggota", daftar tertutup menyebutnya hak di luar keanggotaan. Diambil yang lebih ketat | ya — lewat merge PR #55 |
 | 2026-08-07 | Pembuatan project dibuka untuk **setiap akun aktif**, bukan hanya `owner` instalasi | Permintaan pemilik. Aman karena pendaftaran mandiri tetap non-goal: akun hanya lahir dari undangan `owner`, jadi himpunan pembuatnya tetap terkendali. Tidak butuh migration — `projects.created_by` sudah ada sejak `00002` | ya |
 | 2026-08-07 | **Folder** ditambahkan sebagai wadah project, dengan keanggotaan yang diwariskan | Permintaan pemilik. Ini penambahan cakupan besar, dan konsekuensinya bukan satu tabel: setiap pemeriksaan izin jadi punya dua sumber kebenaran, dan memindahkan project antar-folder menjadi perubahan akses. Lihat [ADR-0011](adr/0011-folder-dan-pewarisan-keanggotaan.md) | ya — keputusan pemilik |
 | 2026-08-07 | Skema folder dijadwalkan masuk di Fase 0, sebelum `internal/authz` ditulis | Alasan yang sama dengan [ADR-0007](adr/0007-postgresql-18.md): database masih kosong. Menulis `authz` tanpa folder lebih dulu berarti menulis ulang seluruh test-nya begitu folder datang | ya |
