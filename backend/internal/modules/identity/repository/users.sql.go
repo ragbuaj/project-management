@@ -12,51 +12,54 @@ import (
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (email, name, password_hash, is_owner)
+INSERT INTO users (email, name, password_hash, role)
 VALUES (
     $1::text,
     $2::text,
     $3::text,
-    $4::boolean
+    $4::text
 )
-RETURNING id, email, name, is_owner, created_at
+RETURNING id, email, name, role, created_at
 `
 
 type CreateUserParams struct {
 	Email        string
 	Name         string
 	PasswordHash string
-	IsOwner      bool
+	Role         string
 }
 
 type CreateUserRow struct {
 	ID        string
 	Email     string
 	Name      string
-	IsOwner   bool
+	Role      string
 	CreatedAt pgtype.Timestamptz
 }
 
+// The account role is chosen by whoever creates the account, never defaulted
+// here: users.role has a DEFAULT, and relying on it would mean a caller that
+// forgets to decide silently gets one (ADR-0012).
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
 	row := q.db.QueryRow(ctx, createUser,
 		arg.Email,
 		arg.Name,
 		arg.PasswordHash,
-		arg.IsOwner,
+		arg.Role,
 	)
 	var i CreateUserRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
 		&i.Name,
-		&i.IsOwner,
+		&i.Role,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, name, password_hash, timezone, is_owner, created_at, updated_at
+SELECT id, email, name, password_hash, timezone, role, created_at, updated_at
 FROM users_live
 WHERE lower(email) = lower($1::text)
 `
@@ -67,7 +70,7 @@ type GetUserByEmailRow struct {
 	Name         string
 	PasswordHash string
 	Timezone     string
-	IsOwner      bool
+	Role         string
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
 }
@@ -83,7 +86,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 		&i.Name,
 		&i.PasswordHash,
 		&i.Timezone,
-		&i.IsOwner,
+		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -92,7 +95,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 
 const getUserByID = `-- name: GetUserByID :one
 
-SELECT id, email, name, password_hash, timezone, is_owner, created_at, updated_at
+SELECT id, email, name, password_hash, timezone, role, created_at, updated_at
 FROM users_live
 WHERE id = $1
 `
@@ -103,7 +106,7 @@ type GetUserByIDRow struct {
 	Name         string
 	PasswordHash string
 	Timezone     string
-	IsOwner      bool
+	Role         string
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
 }
@@ -123,7 +126,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (GetUserByIDRow, e
 		&i.Name,
 		&i.PasswordHash,
 		&i.Timezone,
-		&i.IsOwner,
+		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -131,7 +134,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (GetUserByIDRow, e
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, name, is_owner, created_at
+SELECT id, email, name, role, created_at
 FROM users_live
 ORDER BY lower(name)
 `
@@ -140,7 +143,7 @@ type ListUsersRow struct {
 	ID        string
 	Email     string
 	Name      string
-	IsOwner   bool
+	Role      string
 	CreatedAt pgtype.Timestamptz
 }
 
@@ -157,7 +160,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 			&i.ID,
 			&i.Email,
 			&i.Name,
-			&i.IsOwner,
+			&i.Role,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

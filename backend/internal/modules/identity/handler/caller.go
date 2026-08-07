@@ -56,6 +56,6 @@ func (a *Auth) Me(w http.ResponseWriter, r *http.Request) {
 		Email:    who.Email,
 		Name:     who.Name,
 		Timezone: who.Timezone,
-		IsOwner:  who.IsOwner,
+		Role:     who.Role,
 	})
 }

@@ -59,7 +59,7 @@ func createUser(t *testing.T, ctx context.Context, q *identityrepo.Queries, emai
 		Email:        email,
 		Name:         name,
 		PasswordHash: "argon2id$placeholder",
-		IsOwner:      false,
+		Role:         "contributor",
 	})
 	if err != nil {
 		t.Fatalf("CreateUser(%s): %v", email, err)
