@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `82b3e4d`.
+**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `17cd30c`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -11,12 +11,11 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 
 ## Ringkasan
 
-**34 selesai · 0 sedang · 11 belum**
+**35 selesai · 0 sedang · 10 belum**
 
 Fase 0 punya **31 sub-langkah**: Langkah 9, 11, dan 15 dipecah jadi beberapa PR
 atas permintaan pemilik. Dari 31 itu, **21 selesai dan 10 belum**. Ditambah 10
-item gerbang dokumen (semuanya selesai) dan 4 item perubahan cakupan (3
-selesai, 1 belum — migration folder).
+item gerbang dokumen dan 4 item perubahan cakupan, semuanya selesai.
 
 **Skema dan fondasi backend selesai.** Tujuh migration, 33 tabel, 5 view
 `*_live`, `sqlc` terpasang dengan gerbang CI-nya, `internal/httpx` lengkap —
@@ -25,8 +24,9 @@ request ID, log terstruktur, recovery, bentuk error, rate limit — dan
 
 Langkah 15 dan 16 selesai: aplikasi bisa memasukkan orang, mengenalinya di
 permintaan berikutnya, dan mengeluarkannya — dan sejak Langkah 16 setiap
-permintaan yang mengubah data wajib membawa pasangan CSRF. Yang tersisa dimulai
-dari skema folder, lalu Langkah 17 (otorisasi), undangan, dan seluruh frontend.
+permintaan yang mengubah data wajib membawa pasangan CSRF. Skema folder sudah masuk
+(`00008`), jadi yang tersisa dimulai dari Langkah 17 (otorisasi), lalu undangan
+dan seluruh frontend.
 
 **Model otorisasi berubah pada 2026-08-07.** Setiap akun kini boleh membuat
 project, dan project dikelompokkan ke dalam **folder** yang keanggotaannya
@@ -69,6 +69,9 @@ dibangun untuk keduanya sejak baris pertamanya.
 > Rekonsiliasi kesembilan (2026-08-07, setelah ADR-0011): tabel Fase 0 bertambah
 > satu baris — migration folder — jadi 35 baris, 24 `selesai`, 11 `belum`.
 > Jadi 34 · 0 · 11. Angka `selesai` tidak berubah; yang bertambah pekerjaannya.
+>
+> Rekonsiliasi kesepuluh (2026-08-07, `17cd30c`): 35 baris, 25 `selesai`,
+> 10 `belum`. Jadi 35 · 0 · 10.
 
 ## Gerbang dokumen (sebelum baris kode pertama)
 
@@ -115,7 +118,7 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | 15b | `identity` — terbitkan, baca, dan cabut sesi | selesai | Rencana Fase 0 §15, ADR-0005 | PR #31, #32, #33, #34 (`f63728e`) |
 | 15c | `identity` — `/login`, `/logout`, `/me` | selesai | Rencana Fase 0 §15, ADR-0005 | PR #38, #39, #40, #41 (`b67d79c`) |
 | 16 | Middleware CSRF double-submit | selesai | Rencana Fase 0 §16, ADR-0005 | PR #46, #47 (`82b3e4d`) |
-| — | Migration `00008` `folders`, `folder_members`, `projects.folder_id` | belum | Perubahan cakupan, lihat bawah; [ADR-0011](adr/0011-folder-dan-pewarisan-keanggotaan.md) | — |
+| — | Migration `00008` `folders`, `folder_members`, `projects.folder_id` | selesai | Perubahan cakupan, lihat bawah; [ADR-0011](adr/0011-folder-dan-pewarisan-keanggotaan.md) | PR #51 (`17cd30c`) |
 | 17 | `internal/authz` + table-driven test **enam** pola | belum | Rencana Fase 0 §17, [authorization.md](authorization.md), ADR-0011 | — |
 | 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | belum | Rencana Fase 0 §18 | — |
 | 19 | **Gerbang manusia:** arah desain tertulis | belum | Rencana Fase 0 §19, `rules/15-ui-design.md` §2 | — |
@@ -141,7 +144,25 @@ yang **mengubah cara kerja**, bukan sejarah.
 - **Test skema dan repository skip diam-diam tanpa `TEST_DATABASE_URL` dan
   `TEST_REDIS_URL`,** dan hasilnya tetap terlihat `ok`. Di mesin pengembangan
   utama Docker sering tidak berjalan, jadi **CI yang memverifikasinya**, dari
-  database kosong.
+  database kosong. Saat Docker **berjalan**, jalankan sendiri: compose
+  memetakan PostgreSQL ke port di `.env`, dan
+  `TEST_DATABASE_URL=postgres://<user>:<sandi>@127.0.0.1:<port>/<db>?sslmode=disable`
+  menyalakan seluruh test skema. Kredensialnya dari `.env`, jangan disalin ke
+  berkas mana pun yang ikut repo.
+- **Jalankan migration baru terhadap database yang benar-benar kosong, bukan
+  database lokal yang sudah ter-migrate.** Buat database sekali pakai
+  (`CREATE DATABASE ...`), arahkan `TEST_DATABASE_URL` ke sana, lalu
+  `go test ./...`. Migration `00008` lolos di database lokal dan gagal di
+  database kosong; bedanya bukan isi skemanya, melainkan paket test yang
+  bermigrasi bersamaan.
+- **Jangan pakai `CREATE INDEX CONCURRENTLY` di migration repo ini.** Ia
+  menunggu setiap transaksi yang bisa melihat tabelnya, kena `lock_timeout`,
+  dan karena `-- +goose NO TRANSACTION` tidak bisa di-rollback, ia meninggalkan
+  indeks **INVALID**. Setiap migration sesudahnya gagal dengan `already exists`
+  — permanen, sampai ada yang menghapus indeksnya manual. Terjadi pada
+  percobaan pertama `00008`. Kalau suatu saat memang perlu (indeks pada tabel
+  besar yang sudah berisi), ia butuh rencana pemulihan lebih dulu, bukan hanya
+  berkas migration.
 - **`go test -race` tidak bisa dijalankan lokal** — detektornya menuntut cgo.
   Untuk apa pun yang menyentuh konkurensi, CI-lah verifikasinya.
 - **Target 400 baris per PR itu nyata.** Pada 2026-08-07 pekerjaan dipecah lima
