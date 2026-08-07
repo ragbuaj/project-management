@@ -11,9 +11,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/ragbuaj/project-management/backend/internal/config"
 	"github.com/ragbuaj/project-management/backend/internal/httpx"
+	identityhttp "github.com/ragbuaj/project-management/backend/internal/modules/identity/handler"
+	identityrepo "github.com/ragbuaj/project-management/backend/internal/modules/identity/repository"
+	identityroute "github.com/ragbuaj/project-management/backend/internal/modules/identity/route"
+	identitysvc "github.com/ragbuaj/project-management/backend/internal/modules/identity/service"
 	"github.com/ragbuaj/project-management/backend/internal/postgres"
 	"github.com/ragbuaj/project-management/backend/internal/redis"
 )
@@ -76,7 +81,20 @@ func run() error {
 			slog.String("error", err.Error()))
 	}
 
+	// One Queries bound to the pool. A service that needs a transaction takes
+	// one from the pool and builds its own; nothing here needs that yet.
+	queries := identityrepo.New(pool)
+
+	credentials, err := identitysvc.NewCredentials(queries, log)
+	if err != nil {
+		return fmt.Errorf("identity credentials: %w", err)
+	}
+
+	sessions := identitysvc.NewSessions(queries, log, time.Now)
+
 	mux := http.NewServeMux()
+	identityroute.Register(mux, identityhttp.NewAuth(credentials, sessions, log), sessions, log)
+
 	mux.Handle("GET /healthz", httpx.Health())
 	mux.Handle("GET /readyz", httpx.Ready(log, config.ReadyTimeout, httpx.ReadyCheck{
 		Name:  "postgres",
