@@ -49,3 +49,37 @@ WHERE id = sqlc.arg(id);
 -- name: DeleteSessionByTokenHash :execrows
 DELETE FROM sessions
 WHERE token_hash = sqlc.arg(token_hash)::bytea;
+
+-- The account settings screen: what is signed in right now. The token hash is
+-- never selected. Nothing outside authentication may see it, and a list
+-- endpoint is exactly the place where one stray column becomes a credential
+-- sitting in a JSON body.
+--
+-- Expired rows are filtered rather than listed as dead. The question the screen
+-- answers is "is anything signed in that should not be", and a row that can no
+-- longer authenticate is not an answer to it. Removing them is a job (Langkah
+-- 24); this only decides what is shown.
+-- name: ListSessionsByUser :many
+SELECT id, user_agent, created_at, last_seen_at, expires_at
+FROM sessions
+WHERE user_id = sqlc.arg(user_id)
+  AND expires_at > now()
+ORDER BY last_seen_at DESC, id;
+
+-- Revoking one session. user_id is in the WHERE clause rather than checked in
+-- Go after the row comes back: a session that is not the caller's must not be
+-- deletable, and the only way to be sure of that is for the statement itself to
+-- be unable to reach it. docs/authorization.md keeps sessions to their owner
+-- even for `owner`.
+-- name: DeleteSessionForUser :execrows
+DELETE FROM sessions
+WHERE id = sqlc.arg(id)::uuid
+  AND user_id = sqlc.arg(user_id);
+
+-- Signing out everywhere else. The session making the request is kept, because
+-- the caller asked to end the others and an answer they cannot receive while
+-- still signed in is not the thing they asked for.
+-- name: DeleteOtherSessionsForUser :execrows
+DELETE FROM sessions
+WHERE user_id = sqlc.arg(user_id)
+  AND id <> sqlc.arg(current_id)::uuid;

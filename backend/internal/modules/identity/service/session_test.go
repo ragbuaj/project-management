@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +28,44 @@ type storeStub struct {
 	touched  []identityrepo.TouchSessionParams
 	deleted  [][]byte
 	failWith error
+
+	// The listing half, kept separate from rows because those are keyed by
+	// token digest and this query never sees a token.
+	listed         []identityrepo.ListSessionsByUserRow
+	listedFor      []string
+	revokedByID    []identityrepo.DeleteSessionForUserParams
+	revokedOthers  []identityrepo.DeleteOtherSessionsForUserParams
+	revokeRowCount int64
+}
+
+func (s *storeStub) ListSessionsByUser(_ context.Context, userID string) ([]identityrepo.ListSessionsByUserRow, error) {
+	if s.failWith != nil {
+		return nil, s.failWith
+	}
+
+	s.listedFor = append(s.listedFor, userID)
+
+	return s.listed, nil
+}
+
+func (s *storeStub) DeleteSessionForUser(_ context.Context, arg identityrepo.DeleteSessionForUserParams) (int64, error) {
+	if s.failWith != nil {
+		return 0, s.failWith
+	}
+
+	s.revokedByID = append(s.revokedByID, arg)
+
+	return s.revokeRowCount, nil
+}
+
+func (s *storeStub) DeleteOtherSessionsForUser(_ context.Context, arg identityrepo.DeleteOtherSessionsForUserParams) (int64, error) {
+	if s.failWith != nil {
+		return 0, s.failWith
+	}
+
+	s.revokedOthers = append(s.revokedOthers, arg)
+
+	return s.revokeRowCount, nil
 }
 
 func (s *storeStub) GetSessionByTokenHash(_ context.Context, hash []byte) (identityrepo.GetSessionByTokenHashRow, error) {
@@ -269,3 +308,203 @@ func TestAHostileUserAgentCannotBreakTheInsert(t *testing.T) {
 		})
 	}
 }
+
+// listing builds a stub holding the given sessions.
+func listing(rows ...identityrepo.ListSessionsByUserRow) *storeStub {
+	return &storeStub{listed: rows}
+}
+
+func sessionRow(id, agent string) identityrepo.ListSessionsByUserRow {
+	return identityrepo.ListSessionsByUserRow{
+		ID:         id,
+		UserAgent:  agent,
+		CreatedAt:  pgtype.Timestamptz{Time: testNow.Add(-time.Hour), Valid: true},
+		LastSeenAt: pgtype.Timestamptz{Time: testNow, Valid: true},
+		ExpiresAt:  pgtype.Timestamptz{Time: testNow.Add(time.Hour), Valid: true},
+	}
+}
+
+const (
+	currentID = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+	otherID   = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c"
+)
+
+// The listing has to say which row is the caller's own, or the screen cannot
+// warn somebody before they sign themselves out.
+func TestTheListingMarksTheSessionMakingTheRequest(t *testing.T) {
+	t.Parallel()
+
+	store := listing(sessionRow(currentID, "Firefox"), sessionRow(otherID, "Chrome"))
+
+	got, err := newSessions(store).List(t.Context(), "user-1", currentID)
+	if err != nil {
+		t.Fatalf("List(): %v", err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("got %d sessions, want 2", len(got))
+	}
+
+	if !got[0].Current {
+		t.Error("the caller's own session is not marked current")
+	}
+
+	if got[1].Current {
+		t.Error("another session was marked current")
+	}
+}
+
+// The query must be given the caller's own id and nothing else. This is the
+// read that must never be able to return somebody else's sessions.
+func TestTheListingIsAskedForTheCallersOwnSessionsOnly(t *testing.T) {
+	t.Parallel()
+
+	store := listing(sessionRow(currentID, "Firefox"))
+
+	if _, err := newSessions(store).List(t.Context(), "user-1", currentID); err != nil {
+		t.Fatalf("List(): %v", err)
+	}
+
+	if len(store.listedFor) != 1 || store.listedFor[0] != "user-1" {
+		t.Errorf("the listing was asked for %v, want exactly [user-1]", store.listedFor)
+	}
+}
+
+// Nothing in the summary may carry the credential. A list endpoint is where one
+// stray field becomes a token sitting in a JSON body.
+func TestASummaryCarriesNoCredential(t *testing.T) {
+	t.Parallel()
+
+	store := listing(sessionRow(currentID, "Firefox"))
+
+	got, err := newSessions(store).List(t.Context(), "user-1", currentID)
+	if err != nil {
+		t.Fatalf("List(): %v", err)
+	}
+
+	// Reflection rather than reading the struct, so that a field added later is
+	// caught by this test instead of by whoever finds it in a response.
+	summary := reflect.TypeOf(got[0])
+	for i := range summary.NumField() {
+		switch name := strings.ToLower(summary.Field(i).Name); {
+		case strings.Contains(name, "token"), strings.Contains(name, "hash"), strings.Contains(name, "secret"):
+			t.Errorf("SessionSummary has a field named %q", summary.Field(i).Name)
+		}
+	}
+}
+
+// Ownership is enforced by the statement, not by a check afterwards, so the
+// user id has to reach the query.
+func TestRevokingCarriesTheOwnerIntoTheStatement(t *testing.T) {
+	t.Parallel()
+
+	store := &storeStub{revokeRowCount: 1}
+
+	if err := newSessions(store).RevokeByID(t.Context(), "user-1", otherID); err != nil {
+		t.Fatalf("RevokeByID(): %v", err)
+	}
+
+	if len(store.revokedByID) != 1 {
+		t.Fatalf("the delete ran %d times, want 1", len(store.revokedByID))
+	}
+
+	if got := store.revokedByID[0]; got.UserID != "user-1" || got.ID != otherID {
+		t.Errorf("deleted %+v, want the caller's id and the named session", got)
+	}
+}
+
+// Somebody else's session and a session that does not exist are one answer.
+// Telling them apart would confirm which session ids are real.
+func TestRevokingSomethingThatIsNotYoursIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	// Zero rows deleted is what the WHERE clause produces for both cases.
+	err := newSessions(&storeStub{revokeRowCount: 0}).RevokeByID(t.Context(), "user-1", otherID)
+
+	if !errors.Is(err, identitysvc.ErrSessionNotFound) {
+		t.Errorf("RevokeByID() = %v, want ErrSessionNotFound", err)
+	}
+}
+
+// A malformed id must not reach the database. The column is uuid, so PostgreSQL
+// would reject the statement and turn "no such session" into a 500 — and give
+// the caller a way to tell a malformed id from a real one that is not theirs.
+func TestAMalformedSessionIdIsNotFoundRatherThanAnError(t *testing.T) {
+	t.Parallel()
+
+	store := &storeStub{revokeRowCount: 1}
+
+	for _, id := range []string{"", "not-a-uuid", "../../etc/passwd", "1; DROP TABLE sessions"} {
+		err := newSessions(store).RevokeByID(t.Context(), "user-1", id)
+
+		if !errors.Is(err, identitysvc.ErrSessionNotFound) {
+			t.Errorf("RevokeByID(%q) = %v, want ErrSessionNotFound", id, err)
+		}
+	}
+
+	if len(store.revokedByID) != 0 {
+		t.Errorf("%d malformed ids reached the database", len(store.revokedByID))
+	}
+}
+
+// Signing out everywhere else keeps the session making the request: an answer
+// the caller cannot receive while still signed in is not what they asked for.
+func TestRevokingTheOthersKeepsTheCurrentOne(t *testing.T) {
+	t.Parallel()
+
+	store := &storeStub{revokeRowCount: 3}
+
+	deleted, err := newSessions(store).RevokeOthers(t.Context(), "user-1", currentID)
+	if err != nil {
+		t.Fatalf("RevokeOthers(): %v", err)
+	}
+
+	if deleted != 3 {
+		t.Errorf("reported %d revoked, want 3", deleted)
+	}
+
+	if len(store.revokedOthers) != 1 {
+		t.Fatalf("the delete ran %d times, want 1", len(store.revokedOthers))
+	}
+
+	if got := store.revokedOthers[0]; got.UserID != "user-1" || got.CurrentID != currentID {
+		t.Errorf("deleted %+v, want the caller's id and their current session kept", got)
+	}
+}
+
+// A current session id that is not a uuid cannot reach the database either: the
+// statement excludes one row by id, so an id that matches nothing would delete
+// every session the caller has, including the one they are using.
+func TestAMalformedCurrentIdNeverBecomesADeleteEverything(t *testing.T) {
+	t.Parallel()
+
+	store := &storeStub{revokeRowCount: 9}
+
+	if _, err := newSessions(store).RevokeOthers(t.Context(), "user-1", "not-a-uuid"); err == nil {
+		t.Error("RevokeOthers() accepted a malformed current session id")
+	}
+
+	if len(store.revokedOthers) != 0 {
+		t.Error("a malformed current session id reached the database")
+	}
+}
+
+// A database that will not answer is reported, not turned into an empty list.
+// An empty list reads as "nothing is signed in", which is the opposite of what
+// somebody checking this screen needs to know.
+func TestAFailedListingIsAnErrorRatherThanNoSessions(t *testing.T) {
+	t.Parallel()
+
+	store := &storeStub{failWith: errListingBroken}
+
+	got, err := newSessions(store).List(t.Context(), "user-1", currentID)
+	if err == nil {
+		t.Fatal("List() returned no error while the database was failing")
+	}
+
+	if got != nil {
+		t.Errorf("List() returned %d sessions alongside an error", len(got))
+	}
+}
+
+var errListingBroken = errors.New("postgres is down")

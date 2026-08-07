@@ -58,6 +58,28 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (C
 	return i, err
 }
 
+const deleteOtherSessionsForUser = `-- name: DeleteOtherSessionsForUser :execrows
+DELETE FROM sessions
+WHERE user_id = $1
+  AND id <> $2::uuid
+`
+
+type DeleteOtherSessionsForUserParams struct {
+	UserID    string
+	CurrentID string
+}
+
+// Signing out everywhere else. The session making the request is kept, because
+// the caller asked to end the others and an answer they cannot receive while
+// still signed in is not the thing they asked for.
+func (q *Queries) DeleteOtherSessionsForUser(ctx context.Context, arg DeleteOtherSessionsForUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOtherSessionsForUser, arg.UserID, arg.CurrentID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteSessionByTokenHash = `-- name: DeleteSessionByTokenHash :execrows
 DELETE FROM sessions
 WHERE token_hash = $1::bytea
@@ -67,6 +89,30 @@ WHERE token_hash = $1::bytea
 // one DELETE, effective on the next request, with no revocation list.
 func (q *Queries) DeleteSessionByTokenHash(ctx context.Context, tokenHash []byte) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteSessionByTokenHash, tokenHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteSessionForUser = `-- name: DeleteSessionForUser :execrows
+DELETE FROM sessions
+WHERE id = $1::uuid
+  AND user_id = $2
+`
+
+type DeleteSessionForUserParams struct {
+	ID     string
+	UserID string
+}
+
+// Revoking one session. user_id is in the WHERE clause rather than checked in
+// Go after the row comes back: a session that is not the caller's must not be
+// deletable, and the only way to be sure of that is for the statement itself to
+// be unable to reach it. docs/authorization.md keeps sessions to their owner
+// even for `owner`.
+func (q *Queries) DeleteSessionForUser(ctx context.Context, arg DeleteSessionForUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSessionForUser, arg.ID, arg.UserID)
 	if err != nil {
 		return 0, err
 	}
@@ -126,6 +172,57 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (
 		&i.Role,
 	)
 	return i, err
+}
+
+const listSessionsByUser = `-- name: ListSessionsByUser :many
+SELECT id, user_agent, created_at, last_seen_at, expires_at
+FROM sessions
+WHERE user_id = $1
+  AND expires_at > now()
+ORDER BY last_seen_at DESC, id
+`
+
+type ListSessionsByUserRow struct {
+	ID         string
+	UserAgent  string
+	CreatedAt  pgtype.Timestamptz
+	LastSeenAt pgtype.Timestamptz
+	ExpiresAt  pgtype.Timestamptz
+}
+
+// The account settings screen: what is signed in right now. The token hash is
+// never selected. Nothing outside authentication may see it, and a list
+// endpoint is exactly the place where one stray column becomes a credential
+// sitting in a JSON body.
+//
+// Expired rows are filtered rather than listed as dead. The question the screen
+// answers is "is anything signed in that should not be", and a row that can no
+// longer authenticate is not an answer to it. Removing them is a job (Langkah
+// 24); this only decides what is shown.
+func (q *Queries) ListSessionsByUser(ctx context.Context, userID string) ([]ListSessionsByUserRow, error) {
+	rows, err := q.db.Query(ctx, listSessionsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionsByUserRow{}
+	for rows.Next() {
+		var i ListSessionsByUserRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserAgent,
+			&i.CreatedAt,
+			&i.LastSeenAt,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const touchSession = `-- name: TouchSession :execrows

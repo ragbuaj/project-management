@@ -16,9 +16,19 @@ type Querier interface {
 	// here: users.role has a DEFAULT, and relying on it would mean a caller that
 	// forgets to decide silently gets one (ADR-0012).
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
+	// Signing out everywhere else. The session making the request is kept, because
+	// the caller asked to end the others and an answer they cannot receive while
+	// still signed in is not the thing they asked for.
+	DeleteOtherSessionsForUser(ctx context.Context, arg DeleteOtherSessionsForUserParams) (int64, error)
 	// Logout. ADR-0005 chose opaque sessions precisely so this is all it takes:
 	// one DELETE, effective on the next request, with no revocation list.
 	DeleteSessionByTokenHash(ctx context.Context, tokenHash []byte) (int64, error)
+	// Revoking one session. user_id is in the WHERE clause rather than checked in
+	// Go after the row comes back: a session that is not the caller's must not be
+	// deletable, and the only way to be sure of that is for the statement itself to
+	// be unable to reach it. docs/authorization.md keeps sessions to their owner
+	// even for `owner`.
+	DeleteSessionForUser(ctx context.Context, arg DeleteSessionForUserParams) (int64, error)
 	// Every authenticated request runs this, which is why it also returns the
 	// user: the alternative is two round trips per request for data that is
 	// always needed together.
@@ -41,6 +51,16 @@ type Querier interface {
 	// The two exceptions are the writes below, which have to name the table
 	// because a view is not what you insert into or soft-delete through.
 	GetUserByID(ctx context.Context, id string) (GetUserByIDRow, error)
+	// The account settings screen: what is signed in right now. The token hash is
+	// never selected. Nothing outside authentication may see it, and a list
+	// endpoint is exactly the place where one stray column becomes a credential
+	// sitting in a JSON body.
+	//
+	// Expired rows are filtered rather than listed as dead. The question the screen
+	// answers is "is anything signed in that should not be", and a row that can no
+	// longer authenticate is not an answer to it. Removing them is a job (Langkah
+	// 24); this only decides what is shown.
+	ListSessionsByUser(ctx context.Context, userID string) ([]ListSessionsByUserRow, error)
 	ListUsers(ctx context.Context) ([]ListUsersRow, error)
 	// Masking, not deleting: the account keeps its rows so that its cards and
 	// comments survive with an author (docs/data-model.md, retention). The address
