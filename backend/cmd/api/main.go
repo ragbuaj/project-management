@@ -91,9 +91,12 @@ func run() error {
 	}
 
 	sessions := identitysvc.NewSessions(queries, log, time.Now)
+	guard := loginGuard(rdb, log)
 
 	mux := http.NewServeMux()
-	identityroute.Register(mux, identityhttp.NewAuth(credentials, sessions, log), sessions, log)
+	identityroute.Register(mux,
+		identityhttp.NewAuth(credentials, sessions, guard, cfg.TrustedProxies, log),
+		sessions, log)
 
 	mux.Handle("GET /healthz", httpx.Health())
 	mux.Handle("GET /readyz", httpx.Ready(log, config.ReadyTimeout, httpx.ReadyCheck{
@@ -122,6 +125,32 @@ func run() error {
 	)
 
 	return httpx.Serve(ctx, srv, ln, config.ShutdownTimeout, log)
+}
+
+// loginGuard builds the three failure counters ADR-0010 asks for.
+//
+// The numbers live in the identity module, next to the code that enforces them;
+// this only translates them into the shape the Redis counter takes. The two
+// packages do not know about each other by design (ADR-0008), and one small
+// conversion here is the price of that.
+func loginGuard(rdb *redis.Client, log *slog.Logger) *identitysvc.LoginGuard {
+	limits := identitysvc.DefaultLoginLimits()
+
+	counter := func(buckets []identitysvc.Bucket) *redis.FailureCounter {
+		tiers := make([]redis.Tier, 0, len(buckets))
+		for _, b := range buckets {
+			tiers = append(tiers, redis.Tier{Limit: b.Limit, Window: b.Window})
+		}
+
+		return redis.NewFailureCounter(rdb, tiers...)
+	}
+
+	return identitysvc.NewLoginGuard(
+		counter(limits.Account),
+		counter(limits.Address),
+		counter(limits.Network),
+		log,
+	)
 }
 
 // apiHandler wraps mux in the middleware every request passes through.

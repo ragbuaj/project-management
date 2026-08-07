@@ -132,11 +132,27 @@ func newMux(t *testing.T, s fullStore) *http.ServeMux {
 
 	sessions := identitysvc.NewSessions(s, log, time.Now)
 
+	// A guard with no counters refuses nothing, so these tests keep asking
+	// about routing and sessions rather than about rate limits. What the guard
+	// does is settled in the handler and service tests.
+	guard := identitysvc.NewLoginGuard(openCounter{}, openCounter{}, openCounter{}, log)
+
 	mux := http.NewServeMux()
-	identityroute.Register(mux, identityhttp.NewAuth(credentials, sessions, log), sessions, log)
+	identityroute.Register(mux,
+		identityhttp.NewAuth(credentials, sessions, guard, nil, log), sessions, log)
 
 	return mux
 }
+
+// openCounter never refuses and never remembers anything.
+type openCounter struct{}
+
+func (openCounter) Check(context.Context, string) (bool, time.Duration, error) {
+	return true, 0, nil
+}
+
+func (openCounter) Record(context.Context, string) error { return nil }
+func (openCounter) Reset(context.Context, string) error  { return nil }
 
 // signIn logs in through the mux and returns the session cookie.
 func signIn(t *testing.T, mux *http.ServeMux) *http.Cookie {

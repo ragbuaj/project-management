@@ -26,15 +26,52 @@ const SessionCookieName = "__Host-session"
 // is a client that will not be helped by having its megabyte parsed.
 const maxLoginBody = 4 << 10
 
+// unkeyableWait is what a caller is told when their address cannot be worked
+// out at all, and so no bucket can be counted against. It is a refusal on the
+// safe side of a case that should never occur.
+const unkeyableWait = 30 * time.Second
+
+// attemptFrom names the caller for the rate limit buckets.
+//
+// The address is aggregated here, in the HTTP layer, because which address to
+// believe is a question about proxies and headers (ADR-0010) and the service
+// decides policy rather than what an address means.
+func (a *Auth) attemptFrom(r *http.Request, email string) (identitysvc.LoginAttempt, bool) {
+	addr, ok := httpx.ClientIP(r, a.trusted)
+	if !ok {
+		return identitysvc.LoginAttempt{}, false
+	}
+
+	return identitysvc.LoginAttempt{
+		Email:   email,
+		Address: httpx.RateLimitKey(addr),
+		Network: httpx.RateLimitPrefixKey(addr),
+	}, true
+}
+
 // Auth serves the endpoints in docs/api/openapi.yaml under the auth tag.
 type Auth struct {
 	credentials *identitysvc.Credentials
 	sessions    *identitysvc.Sessions
+	guard       *identitysvc.LoginGuard
+	trusted     httpx.TrustedProxies
 	log         *slog.Logger
 }
 
-func NewAuth(credentials *identitysvc.Credentials, sessions *identitysvc.Sessions, log *slog.Logger) *Auth {
-	return &Auth{credentials: credentials, sessions: sessions, log: log}
+func NewAuth(
+	credentials *identitysvc.Credentials,
+	sessions *identitysvc.Sessions,
+	guard *identitysvc.LoginGuard,
+	trusted httpx.TrustedProxies,
+	log *slog.Logger,
+) *Auth {
+	return &Auth{
+		credentials: credentials,
+		sessions:    sessions,
+		guard:       guard,
+		trusted:     trusted,
+		log:         log,
+	}
 }
 
 // userBody is the User schema of the contract. The field names are the
@@ -95,9 +132,32 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// After the presence check, so that a request with no address at all keys
+	// one shared bucket for every malformed request instead of its own.
+	attempt, ok := a.attemptFrom(r, req.Email)
+	if !ok {
+		// clientip.go is explicit that a caller whose address cannot be worked
+		// out must be refused rather than let through unkeyed. It should not be
+		// reachable — RemoteAddr comes from net/http, not from the caller — so
+		// it is logged rather than passed over in silence.
+		a.log.ErrorContext(r.Context(), "login refused: the client address could not be determined",
+			slog.String("remote_addr", r.RemoteAddr))
+		httpx.WriteRateLimited(w, r, unkeyableWait)
+
+		return
+	}
+
+	if retryAfter, err := a.guard.Check(r.Context(), attempt); err != nil {
+		httpx.WriteRateLimited(w, r, retryAfter)
+
+		return
+	}
+
 	user, err := a.credentials.Authenticate(r.Context(), req.Email, req.Password)
 	if err != nil {
 		if errors.Is(err, identitysvc.ErrInvalidCredentials) {
+			a.guard.RecordFailure(r.Context(), attempt)
+
 			// One message for both halves. docs/api/openapi.yaml declares this
 			// response as identical for an unregistered address and a wrong
 			// password, and the wording is part of that promise.
@@ -106,10 +166,15 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Not counted. This is the database refusing to answer, not somebody
+		// guessing, and charging the caller for our outage would lock people
+		// out of an application that is already broken.
 		httpx.WriteInternalError(w, r, a.log, err)
 
 		return
 	}
+
+	a.guard.Succeeded(r.Context(), attempt)
 
 	token, session, err := a.sessions.Issue(r.Context(), user.ID, r.UserAgent())
 	if err != nil {

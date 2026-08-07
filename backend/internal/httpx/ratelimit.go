@@ -67,13 +67,13 @@ func RateLimit(limiter Limiter, key func(*http.Request) string, onFailure OnLimi
 					return
 				}
 
-				writeRateLimited(w, r, retryAfterUnavailable)
+				WriteRateLimited(w, r, retryAfterUnavailable)
 
 				return
 			}
 
 			if !allowed {
-				writeRateLimited(w, r, retryAfter)
+				WriteRateLimited(w, r, retryAfter)
 
 				return
 			}
@@ -89,7 +89,15 @@ func RateLimit(limiter Limiter, key func(*http.Request) string, onFailure OnLimi
 // a Redis that is already struggling.
 const retryAfterUnavailable = 30 * time.Second
 
-func writeRateLimited(w http.ResponseWriter, r *http.Request, retryAfter time.Duration) {
+// WriteRateLimited answers 429 with the Retry-After the contract declares.
+//
+// It is exported because the login endpoint refuses from inside its handler
+// rather than from this middleware: ADR-0010 counts failed attempts, and
+// whether an attempt failed is only known after the password has been checked.
+// That endpoint still has to produce the same status, the same body, and the
+// same rounding as everything the middleware refuses, and the way to guarantee
+// that is for both to call one function.
+func WriteRateLimited(w http.ResponseWriter, r *http.Request, retryAfter time.Duration) {
 	// Retry-After is whole seconds (docs/api/openapi.yaml). Rounding up rather
 	// than down, so a client that obeys it exactly is not turned away again for
 	// arriving a fraction of a second early.
