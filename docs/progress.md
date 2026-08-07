@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `f63728e`.
+**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `b67d79c`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -11,10 +11,10 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 
 ## Ringkasan
 
-**32 selesai · 0 sedang · 12 belum**
+**33 selesai · 0 sedang · 11 belum**
 
 Fase 0 punya **31 sub-langkah**: Langkah 9, 11, dan 15 dipecah jadi beberapa PR
-atas permintaan pemilik. Dari 31 itu, **19 selesai dan 12 belum**. Ditambah 10
+atas permintaan pemilik. Dari 31 itu, **20 selesai dan 11 belum**. Ditambah 10
 item gerbang dokumen dan 3 item perubahan cakupan, semuanya selesai.
 
 **Skema dan fondasi backend selesai.** Tujuh migration, 33 tabel, 5 view
@@ -22,8 +22,9 @@ item gerbang dokumen dan 3 item perubahan cakupan, semuanya selesai.
 request ID, log terstruktur, recovery, bentuk error, rate limit — dan
 `internal/fracdex` sebagai penghasil urutan kartu (ADR-0003).
 
-Yang tersisa di Fase 0 dimulai dari Langkah 15c (`/login`, `/logout`, `/me`),
-lalu CSRF, otorisasi, dan seluruh frontend.
+Langkah 15 selesai: aplikasi sekarang bisa memasukkan orang, mengenalinya di
+permintaan berikutnya, dan mengeluarkannya. Yang tersisa dimulai dari Langkah
+16 (CSRF), lalu otorisasi dan seluruh frontend.
 
 > **Angka ringkasan pernah dua kali salah, dan keduanya dicatat di sini.**
 >
@@ -50,6 +51,9 @@ lalu CSRF, otorisasi, dan seluruh frontend.
 >
 > Rekonsiliasi keenam (2026-08-07, `f63728e`) dihitung dengan skrip yang sama:
 > 34 baris, 22 `selesai`, 12 `belum`. Jadi 32 · 0 · 12.
+>
+> Rekonsiliasi ketujuh (2026-08-07, `b67d79c`): 34 baris, 23 `selesai`,
+> 11 `belum`. Jadi 33 · 0 · 11.
 
 ## Gerbang dokumen (sebelum baris kode pertama)
 
@@ -94,7 +98,7 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | 14 | `internal/fracdex` + property test | selesai | Rencana Fase 0 §14, ADR-0003 | PR #26, #27, #28 (`90207d6`) |
 | 15a | `identity/domain` — password Argon2id | selesai | Rencana Fase 0 §15, ADR-0005 | PR #29 (`81bd24c`) |
 | 15b | `identity` — terbitkan, baca, dan cabut sesi | selesai | Rencana Fase 0 §15, ADR-0005 | PR #31, #32, #33, #34 (`f63728e`) |
-| 15c | `identity` — `/login`, `/logout`, `/me` | belum | Rencana Fase 0 §15, ADR-0005 | — |
+| 15c | `identity` — `/login`, `/logout`, `/me` | selesai | Rencana Fase 0 §15, ADR-0005 | PR #38, #39, #40, #41 (`b67d79c`) |
 | 16 | Middleware CSRF double-submit | belum | Rencana Fase 0 §16, ADR-0005 | — |
 | 17 | `internal/authz` + table-driven test empat pola | belum | Rencana Fase 0 §17, [authorization.md](authorization.md) | — |
 | 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | belum | Rencana Fase 0 §18 | — |
@@ -188,6 +192,8 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-07 | `sessions.ip_hash` dibiarkan NULL untuk sekarang | SHA-256 telanjang dari IPv4 hanya empat miliar preimage, jadi butuh digest berkunci dan secret-nya; sementara cara menentukan IP klien di belakang Caddy masih pertanyaan terbuka | ya |
 | 2026-08-07 | Rate limiter diganti dari fixed window ke sliding window, dan penghitungnya jadi berlapis (akun, IP, prefiks IP) | [ADR-0010](adr/0010-ip-klien-dan-rate-limit.md). Fixed window bisa dilewati dua kali limit di perbatasan jendela. Pekerjaan tambahan di Langkah 18 yang sebelumnya tidak ada di rencana | ya |
 | 2026-08-07 | Blocklist password bocor lewat HIBP dengan k-anonymity ditambahkan ke jalur pendaftaran dan penggantian password | [ADR-0009](adr/0009-kebijakan-password.md). Dependensi eksternal baru di jalur permintaan pengguna; wajib bertimeout dan **gagal terbuka** | ya |
+| 2026-08-07 | `oasdiff` dipin ke v1.28.0 dan dipasang dengan `GOTOOLCHAIN=auto` | Gerbang kontrak berhenti bisa memasang alatnya: `@latest` menuntut Go 1.26. Sekaligus menghapus `@latest` — gerbang yang alatnya tidak dipin bisa berubah perilakunya tanpa satu pun commit di repo ini | ya — ditanyakan dan disetujui pemilik pada 2026-08-07 |
+| 2026-08-07 | `password.minLength` di kontrak turun dari 8 ke 1, dengan `maxLength` 1024 | Kebijakan panjang ditegakkan saat password **dibuat**, bukan saat dipakai. Endpoint login yang menolak password pendek baru saja memberi tahu pemanggilnya apa aturannya. `oasdiff` tidak menganggapnya merusak | ya — lewat merge PR #39 |
 | 2026-08-07 | Normalisasi NFKC sebelum hashing dan sebelum verifikasi password | [ADR-0009](adr/0009-kebijakan-password.md). Tanpa itu password yang sama dari papan ketik berbeda gagal login. Konsekuensinya: normalisasi tidak bisa diubah lagi setelah ada hash tersimpan | ya |
 | 2026-08-07 | `golang.org/x/crypto` jadi dependency runtime langsung | Argon2id diwajibkan ADR-0005 dan `rules/40-security.md`, dan pustaka standar Go tidak punya implementasinya. Turunannya `golang.org/x/sys` sudah ada di `go.sum`. `govulncheck` bersih | ya — ditanyakan dan disetujui pemilik pada 2026-08-07 |
 
