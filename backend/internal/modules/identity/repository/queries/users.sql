@@ -6,31 +6,34 @@
 -- because a view is not what you insert into or soft-delete through.
 
 -- name: GetUserByID :one
-SELECT id, email, name, password_hash, timezone, is_owner, created_at, updated_at
+SELECT id, email, name, password_hash, timezone, role, created_at, updated_at
 FROM users_live
 WHERE id = $1;
 
 -- Login. Compared with lower() because addresses are not case sensitive and
 -- users_email_key indexes lower(email) for exactly this lookup.
 -- name: GetUserByEmail :one
-SELECT id, email, name, password_hash, timezone, is_owner, created_at, updated_at
+SELECT id, email, name, password_hash, timezone, role, created_at, updated_at
 FROM users_live
 WHERE lower(email) = lower(sqlc.arg(email)::text);
 
 -- name: ListUsers :many
-SELECT id, email, name, is_owner, created_at
+SELECT id, email, name, role, created_at
 FROM users_live
 ORDER BY lower(name);
 
+-- The account role is chosen by whoever creates the account, never defaulted
+-- here: users.role has a DEFAULT, and relying on it would mean a caller that
+-- forgets to decide silently gets one (ADR-0012).
 -- name: CreateUser :one
-INSERT INTO users (email, name, password_hash, is_owner)
+INSERT INTO users (email, name, password_hash, role)
 VALUES (
     sqlc.arg(email)::text,
     sqlc.arg(name)::text,
     sqlc.arg(password_hash)::text,
-    sqlc.arg(is_owner)::boolean
+    sqlc.arg(role)::text
 )
-RETURNING id, email, name, is_owner, created_at;
+RETURNING id, email, name, role, created_at;
 
 -- Masking, not deleting: the account keeps its rows so that its cards and
 -- comments survive with an author (docs/data-model.md, retention). The address

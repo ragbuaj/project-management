@@ -44,7 +44,7 @@ type userBody struct {
 	Email    string `json:"email"`
 	Name     string `json:"name"`
 	Timezone string `json:"timezone"`
-	IsOwner  bool   `json:"is_owner"`
+	Role     string `json:"role"`
 }
 
 func bodyOf(user identitysvc.User) userBody {
@@ -53,7 +53,7 @@ func bodyOf(user identitysvc.User) userBody {
 		Email:    user.Email,
 		Name:     user.Name,
 		Timezone: user.Timezone,
-		IsOwner:  user.IsOwner,
+		Role:     user.Role,
 	}
 }
 

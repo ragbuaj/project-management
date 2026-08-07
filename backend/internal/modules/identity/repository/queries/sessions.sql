@@ -31,7 +31,7 @@ SELECT s.id,
        u.email,
        u.name,
        u.timezone,
-       u.is_owner
+       u.role
 FROM sessions s
 JOIN users_live u ON u.id = s.user_id
 WHERE s.token_hash = sqlc.arg(token_hash)::bytea;

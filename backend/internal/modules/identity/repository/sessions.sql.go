@@ -82,7 +82,7 @@ SELECT s.id,
        u.email,
        u.name,
        u.timezone,
-       u.is_owner
+       u.role
 FROM sessions s
 JOIN users_live u ON u.id = s.user_id
 WHERE s.token_hash = $1::bytea
@@ -97,7 +97,7 @@ type GetSessionByTokenHashRow struct {
 	Email      string
 	Name       string
 	Timezone   string
-	IsOwner    bool
+	Role       string
 }
 
 // Every authenticated request runs this, which is why it also returns the
@@ -123,7 +123,7 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (
 		&i.Email,
 		&i.Name,
 		&i.Timezone,
-		&i.IsOwner,
+		&i.Role,
 	)
 	return i, err
 }

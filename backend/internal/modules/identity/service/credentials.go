@@ -32,7 +32,10 @@ type User struct {
 	Email    string
 	Name     string
 	Timezone string
-	IsOwner  bool
+	// Role is the account role from ADR-0012, as stored. It travels as a
+	// string because this module does not decide permissions — internal/authz
+	// does, and it owns the parsing.
+	Role string
 }
 
 // Credentials checks passwords.
@@ -109,7 +112,7 @@ func (c *Credentials) Authenticate(ctx context.Context, email, password string) 
 		Email:    row.Email,
 		Name:     row.Name,
 		Timezone: row.Timezone,
-		IsOwner:  row.IsOwner,
+		Role:     row.Role,
 	}, nil
 }
 

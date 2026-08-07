@@ -58,8 +58,10 @@ func TestASessionIsFoundByItsDigestAndBringsItsUserAlong(t *testing.T) {
 		t.Errorf("lookup returned %q / %q, want the session owner's address and name", found.Email, found.Name)
 	}
 
-	if found.IsOwner {
-		t.Error("lookup reported the account as the project owner, which it is not")
+	// The role travels with the session lookup, so a change of role takes
+	// effect on the next request rather than at the next expiry (ADR-0005).
+	if found.Role != "contributor" {
+		t.Errorf("lookup returned role %q, want contributor", found.Role)
 	}
 
 	if !found.ExpiresAt.Time.Equal(expires) {

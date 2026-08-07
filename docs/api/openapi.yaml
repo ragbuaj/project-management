@@ -597,15 +597,26 @@ components:
               type: string
               description: Ikut tercatat di log server supaya bisa ditelusuri.
 
+    AccountRole:
+      type: string
+      description: |
+        Peran akun (ADR-0012). Satu-satunya sumber hak seseorang; keanggotaan
+        folder dan project hanya menentukan jangkauannya.
+
+        `owner` melihat dan melakukan apa pun di setiap folder dan project
+        tanpa perlu jadi anggota, dan aksesnya di luar keanggotaan tercatat.
+        `maintainer` dan `owner` boleh membuat folder dan project.
+      enum: [owner, maintainer, contributor, viewer]
+
     User:
       type: object
-      required: [id, email, name, timezone, is_owner]
+      required: [id, email, name, timezone, role]
       properties:
         id:       { type: string }
         email:    { type: string, format: email }
         name:     { type: string }
         timezone: { type: string }
-        is_owner: { type: boolean }
+        role:     { $ref: '#/components/schemas/AccountRole' }
 
     UserRef:
       description: Bentuk ringkas untuk disematkan. Tidak memuat email.
@@ -614,10 +625,6 @@ components:
       properties:
         id:   { type: string }
         name: { type: string }
-
-    ProjectRole:
-      type: string
-      enum: [admin, member, viewer]
 
     Project:
       type: object
@@ -629,10 +636,11 @@ components:
         description: { type: string }
         folder_id:   { type: [string, 'null'], description: '`null` berarti project berdiri sendiri (ADR-0011)' }
         my_role:
-          $ref: '#/components/schemas/ProjectRole'
+          $ref: '#/components/schemas/AccountRole'
           description: |
-            Peran **efektif** — yang tertinggi antara peran di project ini dan
-            peran di folder induknya (ADR-0011).
+            Peran akun pemanggil, diulang di sini supaya klien tidak perlu
+            mencarinya terpisah. Sejak ADR-0012 ia sama untuk setiap project —
+            keanggotaan menentukan jangkauan, bukan peran.
         created_at:  { type: string, format: date-time }
         archived_at: { type: [string, 'null'], format: date-time }
 

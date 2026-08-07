@@ -48,7 +48,7 @@ func newStore(t *testing.T) *store {
 			Name:         "Member",
 			PasswordHash: hash,
 			Timezone:     "Asia/Jakarta",
-			IsOwner:      true,
+			Role:         "owner",
 		},
 		sessions: map[string]identityrepo.GetSessionByTokenHashRow{},
 	}
@@ -78,7 +78,7 @@ func (s *store) CreateSession(_ context.Context, arg identityrepo.CreateSessionP
 		Email:      s.user.Email,
 		Name:       s.user.Name,
 		Timezone:   s.user.Timezone,
-		IsOwner:    s.user.IsOwner,
+		Role:       s.user.Role,
 	}
 
 	return identityrepo.CreateSessionRow{
@@ -196,14 +196,14 @@ func TestASessionFromLoginIsAcceptedByMe(t *testing.T) {
 		Email    string `json:"email"`
 		Name     string `json:"name"`
 		Timezone string `json:"timezone"`
-		IsOwner  bool   `json:"is_owner"`
+		Role     string `json:"role"`
 	}
 
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("/me is not the shape the contract declares: %v", err)
 	}
 
-	if body.ID != "user-1" || body.Email != testEmail || body.Timezone != "Asia/Jakarta" || !body.IsOwner {
+	if body.ID != "user-1" || body.Email != testEmail || body.Timezone != "Asia/Jakarta" || body.Role != "owner" {
 		t.Errorf("/me returned %+v", body)
 	}
 }

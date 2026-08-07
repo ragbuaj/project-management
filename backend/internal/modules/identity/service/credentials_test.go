@@ -65,7 +65,7 @@ func seedUser(t *testing.T, email, hash string) *userStub {
 			Name:         "Member",
 			PasswordHash: hash,
 			Timezone:     "Asia/Jakarta",
-			IsOwner:      false,
+			Role:         "contributor",
 		},
 	}}
 }
@@ -108,6 +108,7 @@ func TestTheRightPasswordReturnsTheAccountBehindIt(t *testing.T) {
 		Email:    "member@example.test",
 		Name:     "Member",
 		Timezone: "Asia/Jakarta",
+		Role:     "contributor",
 	}
 
 	if who != want {

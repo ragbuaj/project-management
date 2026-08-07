@@ -12,6 +12,9 @@ type Querier interface {
 	// Sessions. The token itself never reaches this file: what is stored and what
 	// is looked up is its SHA-256, computed in the domain layer (ADR-0005).
 	CreateSession(ctx context.Context, arg CreateSessionParams) (CreateSessionRow, error)
+	// The account role is chosen by whoever creates the account, never defaulted
+	// here: users.role has a DEFAULT, and relying on it would mean a caller that
+	// forgets to decide silently gets one (ADR-0012).
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
 	// Logout. ADR-0005 chose opaque sessions precisely so this is all it takes:
 	// one DELETE, effective on the next request, with no revocation list.

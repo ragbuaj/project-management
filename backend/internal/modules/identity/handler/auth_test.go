@@ -53,7 +53,7 @@ func newStore(t *testing.T) *store {
 				Name:         "Member",
 				PasswordHash: hash,
 				Timezone:     "Asia/Jakarta",
-				IsOwner:      true,
+				Role:         "owner",
 			},
 		},
 		sessions: map[string]identityrepo.GetSessionByTokenHashRow{},
@@ -167,7 +167,7 @@ func TestLoggingInReturnsTheUserAndSetsTheSessionCookie(t *testing.T) {
 			Email    string `json:"email"`
 			Name     string `json:"name"`
 			Timezone string `json:"timezone"`
-			IsOwner  bool   `json:"is_owner"`
+			Role     string `json:"role"`
 		} `json:"user"`
 	}
 
@@ -175,7 +175,7 @@ func TestLoggingInReturnsTheUserAndSetsTheSessionCookie(t *testing.T) {
 		t.Fatalf("response is not the shape the contract declares: %v", err)
 	}
 
-	if body.User.ID != "user-1" || body.User.Email != testEmail || body.User.Timezone != "Asia/Jakarta" || !body.User.IsOwner {
+	if body.User.ID != "user-1" || body.User.Email != testEmail || body.User.Timezone != "Asia/Jakarta" || body.User.Role != "owner" {
 		t.Errorf("user came back as %+v", body.User)
 	}
 }
