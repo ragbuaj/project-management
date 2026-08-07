@@ -47,6 +47,13 @@ type Querier interface {
 	// Sliding renewal. The caller decides how often this is worth running; see
 	// Session.NeedsRenewal, which exists so this is not one write per request.
 	TouchSession(ctx context.Context, arg TouchSessionParams) (int64, error)
+	// Rewriting a hash at a cost the application has since raised. A successful
+	// login is the only moment this is possible, because it is the only moment the
+	// password is in memory.
+	//
+	// The old hash is matched as well as the id, so two logins racing each other
+	// cannot have one overwrite the other's rehash with a stale value.
+	UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)
