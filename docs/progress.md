@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `46c9c04`.
+**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `e5eae60`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -13,9 +13,10 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 
 **38 selesai · 1 sedang · 8 belum**
 
-Fase 0 punya **31 sub-langkah**: Langkah 9, 11, dan 15 dipecah jadi beberapa PR
-atas permintaan pemilik. Dari 31 itu, **22 selesai dan 9 belum**. Ditambah 10
-item gerbang dokumen dan 6 item perubahan cakupan, semuanya selesai.
+Fase 0 punya **31 sub-langkah** bernomor: Langkah 9, 11, dan 15 dipecah jadi
+beberapa PR atas permintaan pemilik. Dari 31 itu, **22 selesai, 1 sedang, dan 8
+belum**. Ditambah 10 item gerbang dokumen dan 6 baris perubahan cakupan,
+semuanya selesai — jadi 38 · 1 · 8.
 
 **Skema dan fondasi backend selesai.** Tujuh migration, 33 tabel, 5 view
 `*_live`, `sqlc` terpasang dengan gerbang CI-nya, `internal/httpx` lengkap —
@@ -30,6 +31,12 @@ dan Langkah 17 selesai: `internal/authz` memutuskan dari peran akun ditambah
 satu pemeriksaan keanggotaan, dengan pengecualian owner hidup di satu tempat.
 Yang tersisa dimulai dari Langkah 18 (undangan, reset password, daftar sesi),
 lalu seluruh frontend.
+
+**Langkah 18 sudah melewati dua dari delapan potongannya.** Potongan a
+menentukan alamat klien di belakang proxy; potongan b mengganti fixed window
+dengan sliding window berlapis. Potongan c baru primitifnya: `FailureCounter`
+ada, tapi **belum dipasang di route mana pun** — `/auth/login` masih tidak
+berbatas.
 
 **Yang belum punya implementasi:** antarmuka `authz.Memberships` sengaja tanpa
 implementasi sampai modul project lahir di Fase 1 — `project_members` dan
@@ -100,6 +107,23 @@ selesai lalu diam-diam menggantinya adalah cara catatan ini berbohong.
 > 1 `sedang`, 8 `belum`. Jadi 38 · 1 · 8. Langkah 18 dimulai dan **berhenti di
 > tengah** — statusnya `sedang`, bukan `belum`, dan bagian yang sudah masuk
 > disebutkan di kolom buktinya.
+>
+> Rekonsiliasi keempat belas (2026-08-08, `e5eae60`): 37 baris — 31 sub-langkah
+> bernomor (22 `selesai`, 1 `sedang`, 8 `belum`) ditambah 6 baris perubahan
+> cakupan yang semuanya `selesai` — ditambah 10 gerbang dokumen.
+> Jadi 38 · 1 · 8 — **tidak berubah**, dan itu benar.
+> Tiga PR ter-merge (#67, #68, #69) tapi semuanya di dalam Langkah 18, yang
+> sudah `sedang` sebelum sesi ini dan masih `sedang` sesudahnya. Yang bergerak
+> ada di tabel potongan, bukan di tabel Fase 0. Angka yang diam bukan tanda
+> tidak ada pekerjaan; ia tanda pekerjaannya belum menyentuh batas langkah.
+>
+> Dan paragraf di atas tabel **basi lagi**, persis seperti yang diperingatkan
+> dua rekonsiliasi lalu: ia masih menulis `22 selesai dan 9 belum` untuk 31
+> sub-langkah, karena rekonsiliasi ketiga belas memperkenalkan status `sedang`
+> di tabel tanpa ikut membetulkan kalimatnya. Ini kedua kalinya paragraf yang
+> sama tertinggal. Skrip penghitungnya sekarang memisahkan sub-langkah bernomor
+> dari baris perubahan cakupan, supaya kalimat itu bisa diperiksa dan bukan
+> hanya totalnya.
 
 ## Gerbang dokumen (sebelum baris kode pertama)
 
@@ -150,7 +174,7 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | — | Migration `00009` & `00010` — peran akun, dan pembuangan `is_owner` | selesai | Perubahan cakupan, lihat bawah; [ADR-0012](adr/0012-peran-akun-dan-akses-owner.md) | PR #59, #60, #63 (`98c5b4d`) |
 | — | Modul identity membawa peran akun, bukan `is_owner` | selesai | ADR-0012 | PR #61 |
 | 17 | `internal/authz` + table-driven test **tujuh** pola | selesai | Rencana Fase 0 §17, [authorization.md](authorization.md), ADR-0012 | PR #53, #54, #55, lalu **ditulis ulang** di #62 (`94d2303`) |
-| 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | sedang | Rencana Fase 0 §18, ADR-0009, ADR-0010 | 1 dari 8 potongan — PR #65 |
+| 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | sedang | Rencana Fase 0 §18, ADR-0009, ADR-0010 | 2 dari 8 potongan — PR #65, #67, #68; potongan c baru primitifnya di #69 |
 | 19 | **Gerbang manusia:** arah desain tertulis | belum | Rencana Fase 0 §19, `rules/15-ui-design.md` §2 | — |
 | 20 | Scaffold Vite + shadcn + token | belum | Rencana Fase 0 §20 | — |
 | 21 | Generate tipe dari OpenAPI + layar login empat state | belum | Rencana Fase 0 §21 | — |
@@ -186,10 +210,22 @@ yang **mengubah cara kerja**, bukan sejarah.
   database kosong; bedanya bukan isi skemanya, melainkan paket test yang
   bermigrasi bersamaan.
 - **`/auth/login` belum berbatas sama sekali.** `httpx.RateLimit` ada sejak
-  Langkah 13 tapi tidak pernah dipasang, dan tidak ada implementasi `Limiter`
-  yang dipakai — padahal ADR-0005 dan ADR-0010 mewajibkannya. Ini lubang di
-  kode yang **sudah ter-merge**, bukan pekerjaan yang belum dimulai, dan ia
-  ditutup oleh potongan b dan c Langkah 18.
+  Langkah 13 tapi tidak pernah dipasang — padahal ADR-0005 dan ADR-0010
+  mewajibkannya. Ini lubang di kode yang **sudah ter-merge**, bukan pekerjaan
+  yang belum dimulai. Sejak PR #69 pembatasnya sudah ada dan teruji; yang belum
+  ada adalah pemasangannya, dan itu potongan c.
+- **Test yang memakai Redis harus memberi penanda per-jalan pada kuncinya.**
+  Redis hidup lebih lama daripada proses test, jadi kunci yang hanya diturunkan
+  dari `t.Name()` membuat `go test -count=2` — dan setiap rerun CI di dalam
+  jendela terpanjang — mulai dengan penghitung yang sudah penuh. Gejalanya
+  terbaca seperti pembatas yang rusak, bukan seperti test yang memakai ulang
+  kunci. Cacat ini hidup sejak PR #24 dan baru ketahuan di PR #68.
+- **Mutasi yang lolos berarti test-nya yang palsu, bukan mutasinya yang lemah.**
+  Di PR #69 nomor urut anggota ZSET dibuang dan seluruh test tetap hijau —
+  karena `Record` berurutan hampir tak pernah mendarat di milidetik yang sama,
+  jadi tabrakan yang diklaim diuji tidak pernah terjadi. Test-nya ditulis ulang
+  jadi 50 `Record` bersamaan. Untuk apa pun yang dijaga atomisitas, test-nya
+  harus konkuren; yang berurutan hanya terlihat seperti menguji.
 - **`oasdiff breaking` tidak menangkap penghapusan properti dari respons.**
   PR #61 menghapus `is_owner` dari `/me` dan `/auth/login` — perubahan yang
   merusak setiap klien yang membacanya — dan gerbangnya hijau. Ia menjaga sisi
@@ -226,8 +262,8 @@ menutup lubang rate limit lebih dulu.
 | # | Isi | Status |
 |---|---|---|
 | a | `httpx.ClientIP` — proxy tepercaya, agregasi IPv6 /64 | selesai, PR #65 |
-| b | Sliding window berlapis di `internal/redis`, menggantikan `FixedWindow` yang tak terpakai | belum |
-| c | `/auth/login` berbatas: ember akun + IP + prefiks, gagal tertutup | belum |
+| b | Sliding window berlapis di `internal/redis`, menggantikan `FixedWindow` yang tak terpakai | selesai, PR #67 (menggeser) & #68 (berlapis) |
+| c | `/auth/login` berbatas: ember akun + IP + prefiks, gagal tertutup | sedang — primitif `FailureCounter` di PR #69; **belum terpasang di route mana pun** |
 | d | Daftar & cabut sesi + kontrak | belum |
 | e | `internal/mail` — pengirim SMTP, dan penangkap untuk test | belum |
 | f | Undangan: owner membuat akun pegawai | belum |
@@ -239,8 +275,18 @@ Yang perlu diingat saat melanjutkan:
 - **Undangan hanya untuk membuat akun baru.** Menambahkan orang yang sudah
   punya akun ke folder atau project berlaku **langsung tanpa persetujuan**
   (keputusan pemilik, 2026-08-08). `invitations.role` berisi peran **akun**.
-- `FixedWindow` di `internal/redis` adalah sisa dari sebelum ADR-0010. Ia tidak
-  dipakai siapa pun dan digantikan di potongan b, bukan ditambahi.
+- **Potongan c dilanjutkan dari `redis.FailureCounter`, bukan dari nol.**
+  `Check`, `Record`, dan `Reset` sudah ada dan teruji; yang belum ada adalah
+  yang memanggilnya. Yang tersisa: menyusun tiga ember (akun, IP, prefiks IP)
+  dari angka ADR-0010, memanggil `Check` sebelum verifikasi password dan
+  `Record` sesudahnya kalau gagal, `Reset` kalau berhasil, gagal **tertutup**
+  saat Redis mati, lalu 429 dengan `Retry-After` dan barisnya di OpenAPI.
+- **Jangan pakai `SlidingWindow` untuk `/auth/login`.** Ia memeriksa dan
+  mencatat sekaligus, jadi ia menghitung setiap percobaan — termasuk yang
+  berhasil. ADR-0010 menghitung **kegagalan**, dan bedanya nyata di alamat
+  bersama: satu kantor di belakang satu NAT akan mengunci dirinya sendiri di jam
+  tersibuk. `SlidingWindow` tetap yang benar untuk `httpx.RateLimit` di endpoint
+  lain.
 - Potongan e sampai h butuh SMTP. Mailpit sudah ada di compose dan menutup
   seluruh pengembangan lokal; penyedia produksinya belum dipilih dan baru
   menggigit di Langkah 25.
@@ -368,6 +414,9 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-07 | Cookie CSRF bernama `__Host-csrf`, bukan `csrf` seperti tertulis di ADR-0005 dan kontrak. ADR-0005 disusulkan pada 2026-08-07 supaya dokumennya tidak menyimpang dari kodenya | Double-submit hanya rahasia selama tidak ada pihak lain yang bisa menulis cookie-nya. Subdomain saudara yang menulis `csrf` biasa memegang kedua belahnya sekaligus; cookie `__Host-` bersifat host-only menurut definisinya, jadi ia tidak bisa. Ini kelemahan bawaan double-submit, dan awalan itu yang menutupnya | ya — lewat merge PR #47, yang deskripsinya menjelaskan penyimpangan ini |
 | 2026-08-07 | Cookie CSRF diterbitkan middleware pada permintaan aman mana pun, bukan oleh handler login seperti tersirat di kontrak | Kalau penerbitannya milik satu endpoint, endpoint yang mengubah data bergantung pada endpoint lain yang ingat menerbitkannya — lubang yang sama dengan "lupa memasang middleware", dari sisi sebaliknya. Akibat baiknya `POST /auth/login` ikut terlindungi dari login lintas-situs | ya — lewat merge PR #47 |
 | 2026-08-07 | Rantai middleware diangkat dari `run()` menjadi `apiHandler()` di `cmd/api` | ADR-0005 menaruh pemeriksaan CSRF di router justru supaya tidak ada route yang bisa ditambahkan tanpanya. Rantai yang hanya dirakit di dalam `run()` tidak bisa ditanyai apakah itu masih benar; sekarang ada dua test yang menanyakannya | ya — lewat merge PR #47 |
+| 2026-08-08 | Potongan b dipecah jadi dua PR (#67 menggeser, #68 berlapis) | Alasan yang sama dengan Langkah 13–16. Potongannya diputuskan sebelum PR pertama dibuat | ya |
+| 2026-08-08 | **Penghitung kegagalan jadi tipe tersendiri (`redis.FailureCounter`), bukan metode tambahan pada `SlidingWindow`** | ADR-0010 menghitung *kegagalan*, dan jawaban "apakah percobaan ini gagal" baru ada setelah password diverifikasi — jauh setelah titik di mana pemanggil harus ditolak. `Allow` yang memeriksa dan mencatat sekaligus tidak bisa menyatakan itu. Menyatukan keduanya berarti menghitung login yang berhasil, dan di satu kantor di belakang satu NAT itu mengunci seluruh kantor di jam tersibuk — persis yang dilarang ADR-0010 | ya — lewat merge PR #69, yang deskripsinya menjelaskan pilihan ini |
+| 2026-08-08 | Konsekuensi pilihan di atas diterima secara sadar: antara `Check` dan `Record` ada jendela tempat ledakan percobaan bersamaan bisa lolos | Jendelanya selebar jumlah percobaan yang muat dalam satu verifikasi Argon2id (ADR-0005) — ongkos yang memang ada untuk membuat penebakan mahal. Menutupnya lebih rapat menuntut penghitungan keberhasilan atau mekanisme pengembalian jatah, dan yang pertama adalah penguncian kantor di atas | ya — lewat merge PR #69 |
 | 2026-08-07 | `golang.org/x/crypto` jadi dependency runtime langsung | Argon2id diwajibkan ADR-0005 dan `rules/40-security.md`, dan pustaka standar Go tidak punya implementasinya. Turunannya `golang.org/x/sys` sudah ada di `go.sum`. `govulncheck` bersih | ya — ditanyakan dan disetujui pemilik pada 2026-08-07 |
 
 ## Cara memperbarui berkas ini
