@@ -101,6 +101,7 @@ backend/
 │   ├── httpx/                  # router, middleware, bentuk error, request ID
 │   ├── authz/                  # policy — satu-satunya tempat izin diputuskan
 │   ├── fracdex/                # fractional index (ADR-0003)
+│   ├── mail/                   # render RFC 5322 + kirim lewat SMTP
 │   ├── events/                 # Publisher/Subscriber, implementasi outbox
 │   ├── realtime/               # hub WebSocket, fanout via Redis
 │   ├── jobs/                   # definisi & worker river
