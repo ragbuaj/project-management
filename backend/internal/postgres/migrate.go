@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	// Registers the pgx driver under the name "pgx" for database/sql, which is
@@ -22,6 +23,15 @@ const migrationsDir = "migrations"
 // lock any other part of this system takes.
 const migrationLockID int64 = 8_027_413_509_116_244
 
+// gooseMu guards goose's package-level dialect and base filesystem, which
+// openForMigrations sets on every call.
+//
+// The advisory lock below cannot cover this. That lock lives in PostgreSQL and
+// keeps two processes from applying migrations at once; these two variables
+// live in this process, and two goroutines calling Migrate write them
+// concurrently before either has reached the database at all.
+var gooseMu sync.Mutex
+
 // Migrate applies every pending migration and returns once the schema is at
 // the newest version.
 //
@@ -37,6 +47,12 @@ const migrationLockID int64 = 8_027_413_509_116_244
 // deliberately exposes no command that would roll back, because a button that
 // exists is a button that gets pressed at three in the morning.
 func Migrate(ctx context.Context, databaseURL string) error {
+	// Held for the whole call, including the wait for the advisory lock. goose
+	// reads its dialect and filesystem while it runs, not only while they are
+	// being set, so releasing early would put the read back in the race.
+	gooseMu.Lock()
+	defer gooseMu.Unlock()
+
 	sqlDB, err := openForMigrations(databaseURL)
 	if err != nil {
 		return err
@@ -77,6 +93,9 @@ func Migrate(ctx context.Context, databaseURL string) error {
 
 // MigrationStatus writes the applied and pending migrations to goose's logger.
 func MigrationStatus(ctx context.Context, databaseURL string) error {
+	gooseMu.Lock()
+	defer gooseMu.Unlock()
+
 	sqlDB, err := openForMigrations(databaseURL)
 	if err != nil {
 		return err
