@@ -27,8 +27,8 @@ func accountTx(t *testing.T) (context.Context, pgx.Tx) {
 }
 
 const insertUserWithRole = `
-	INSERT INTO users (email, name, password_hash, is_owner, role)
-	VALUES ($1, 'Seed', 'argon2id$placeholder', $2, $3)`
+	INSERT INTO users (email, name, password_hash, role)
+	VALUES ($1, 'Seed', 'argon2id$placeholder', $2)`
 
 // The vocabulary of ADR-0012 and nothing else. A value the application never
 // writes would be read by authz as a role it has never heard of, and "deny by
@@ -37,13 +37,13 @@ func TestAnAccountRoleOutsideTheFourIsRejected(t *testing.T) {
 	ctx, tx := accountTx(t)
 
 	for _, role := range []string{"admin", "member", "maintainer_", "Owner", "", "superuser"} {
-		if err := attempt(t, ctx, tx, insertUserWithRole, "bad-"+role+"@example.test", false, role); err == nil {
+		if err := attempt(t, ctx, tx, insertUserWithRole, "bad-"+role+"@example.test", role); err == nil {
 			t.Errorf("account role %q was accepted", role)
 		}
 	}
 
 	for _, role := range []string{"maintainer", "contributor", "viewer"} {
-		if err := attempt(t, ctx, tx, insertUserWithRole, role+"@example.test", false, role); err != nil {
+		if err := attempt(t, ctx, tx, insertUserWithRole, role+"@example.test", role); err != nil {
 			t.Errorf("account role %q was rejected: %v", role, err)
 		}
 	}
@@ -58,32 +58,12 @@ func TestOnlyOneAccountMayHoldTheOwnerRole(t *testing.T) {
 		t.Fatalf("clear users: %v", err)
 	}
 
-	if err := attempt(t, ctx, tx, insertUserWithRole, "first@example.test", true, "owner"); err != nil {
+	if err := attempt(t, ctx, tx, insertUserWithRole, "first@example.test", "owner"); err != nil {
 		t.Fatalf("insert the first owner: %v", err)
 	}
 
-	if err := attempt(t, ctx, tx, insertUserWithRole, "second@example.test", true, "owner"); err == nil {
+	if err := attempt(t, ctx, tx, insertUserWithRole, "second@example.test", "owner"); err == nil {
 		t.Error("a second owner was accepted; users_single_owner_role_key is not enforcing")
-	}
-}
-
-// is_owner and role both answer "who is the owner" until 00010 drops the
-// first. Two columns answering the same question are two columns that will one
-// day answer it differently — including through a hand-written UPDATE during
-// the transition, which is exactly what this constraint refuses.
-func TestTheTwoOwnerColumnsCannotDisagreeWhileBothExist(t *testing.T) {
-	ctx, tx := accountTx(t)
-
-	if _, err := tx.Exec(ctx, `DELETE FROM users`); err != nil {
-		t.Fatalf("clear users: %v", err)
-	}
-
-	if err := attempt(t, ctx, tx, insertUserWithRole, "claims-role@example.test", false, "owner"); err == nil {
-		t.Error("role='owner' with is_owner=false was accepted")
-	}
-
-	if err := attempt(t, ctx, tx, insertUserWithRole, "claims-flag@example.test", true, "contributor"); err == nil {
-		t.Error("is_owner=true with role='contributor' was accepted")
 	}
 }
 
