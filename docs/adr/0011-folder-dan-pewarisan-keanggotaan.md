@@ -3,6 +3,12 @@
 **Status:** Accepted
 **Tanggal:** 2026-08-07
 **Pengambil keputusan:** pemilik proyek
+**Diamandemen:** [ADR-0012](0012-peran-akun-dan-akses-owner.md) pada 2026-08-08
+membatalkan seluruh bagian **Peran efektif** di bawah. Peran tidak lagi melekat
+pada keanggotaan, sehingga tidak ada dua peran untuk digabungkan. Yang tetap
+berlaku: folder sebagai wadah satu tingkat, `projects.folder_id` yang boleh
+`NULL`, penghapusan folder yang melepaskan isinya, dan **pewarisan
+keanggotaan** — anggota folder adalah anggota setiap project di dalamnya.
 
 ## Konteks
 

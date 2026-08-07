@@ -107,7 +107,10 @@ CREATE TABLE users (
     name           text NOT NULL,                       -- 🔒 data pribadi
     password_hash  text NOT NULL,                       -- 🔒 Argon2id
     timezone       text NOT NULL DEFAULT 'Asia/Jakarta',
-    is_owner       boolean NOT NULL DEFAULT false,
+    -- Satu-satunya sumber hak seseorang (ADR-0012). Keanggotaan hanya
+    -- menentukan jangkauan, bukan peran.
+    role           text NOT NULL DEFAULT 'member'
+                   CHECK (role IN ('owner','project_manager','member','viewer')),
     created_at     timestamptz NOT NULL DEFAULT now(),
     updated_at     timestamptz NOT NULL DEFAULT now(),
     deactivated_at timestamptz,
@@ -142,7 +145,11 @@ CREATE TABLE invitations (
     -- saat `invitations` dibuat. Bentuk di bawah membaca enak sebagai
     -- deskripsi skema, tapi tidak bisa dijalankan berurutan.
     project_id  uuid REFERENCES projects(id) ON DELETE CASCADE,
-    role        text NOT NULL CHECK (role IN ('admin','member','viewer')),
+    -- Peran AKUN yang diberikan saat undangan diterima (ADR-0012), bukan peran
+    -- di dalam project. Undangan hanya dipakai untuk membuat akun pegawai
+    -- baru; menambahkan pegawai yang sudah punya akun ke sebuah project
+    -- berlaku langsung, tanpa undangan.
+    role        text NOT NULL CHECK (role IN ('project_manager','member','viewer')),
     expires_at  timestamptz NOT NULL,
     accepted_at timestamptz,
     created_at  timestamptz NOT NULL DEFAULT now()
@@ -184,10 +191,10 @@ CREATE TABLE folders (
     updated_at  timestamptz NOT NULL DEFAULT now()
 );
 
+-- Tanpa kolom peran (ADR-0012): keanggotaan biner, haknya dari users.role.
 CREATE TABLE folder_members (
     folder_id uuid NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
     user_id   uuid NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
-    role      text NOT NULL CHECK (role IN ('admin','member','viewer')),
     added_at  timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (folder_id, user_id)
 );
@@ -215,7 +222,6 @@ CREATE UNIQUE INDEX projects_key_key ON projects (key) WHERE deleted_at IS NULL;
 CREATE TABLE project_members (
     project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     user_id    uuid NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
-    role       text NOT NULL CHECK (role IN ('admin','member','viewer')),
     added_at   timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (project_id, user_id)
 );
