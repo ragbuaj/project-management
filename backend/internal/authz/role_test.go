@@ -10,17 +10,24 @@ import (
 // allRoles is every role this package can produce, weakest first. Spelled out
 // rather than generated, so adding one to the type without deciding where it
 // ranks shows up here as a test to update rather than as silence.
-var allRoles = []authz.Role{authz.RoleNone, authz.RoleViewer, authz.RoleMember, authz.RoleAdmin}
+var allRoles = []authz.Role{
+	authz.RoleNone,
+	authz.RoleViewer,
+	authz.RoleContributor,
+	authz.RoleMaintainer,
+	authz.RoleOwner,
+}
 
-// The three names are the ones the CHECK constraints on project_members and
-// folder_members allow, and nothing else may cross into this package.
+// The four names are the ones the CHECK constraint on users.role allows, and
+// nothing else may cross into this package.
 func TestParseRoleAcceptsExactlyWhatTheDatabaseStores(t *testing.T) {
 	t.Parallel()
 
 	for name, want := range map[string]authz.Role{
-		"viewer": authz.RoleViewer,
-		"member": authz.RoleMember,
-		"admin":  authz.RoleAdmin,
+		"viewer":      authz.RoleViewer,
+		"contributor": authz.RoleContributor,
+		"maintainer":  authz.RoleMaintainer,
+		"owner":       authz.RoleOwner,
 	} {
 		got, err := authz.ParseRole(name)
 		if err != nil {
@@ -35,11 +42,13 @@ func TestParseRoleAcceptsExactlyWhatTheDatabaseStores(t *testing.T) {
 
 // Matching is exact. A spelling this application never writes is a value some
 // other writer put there, and accepting it means accepting whatever else they
-// wrote too.
+// wrote too. The first three below are the vocabularies this project has
+// already retired, which is exactly the kind of value that turns up in an old
+// script.
 func TestParseRoleRefusesAnythingElse(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"", "Admin", "ADMIN", " admin", "admin ", "owner", "guest", "share", "superuser"} {
+	for _, name := range []string{"admin", "member", "project_manager", "", "Owner", "OWNER", " owner", "owner ", "guest", "share"} {
 		got, err := authz.ParseRole(name)
 		if !errors.Is(err, authz.ErrUnknownRole) {
 			t.Errorf("ParseRole(%q) err = %v, want ErrUnknownRole", name, err)
@@ -54,8 +63,8 @@ func TestParseRoleRefusesAnythingElse(t *testing.T) {
 }
 
 // The zero value denies everything. Code that forgets to assign a role, or a
-// struct field that was never filled, must fail closed rather than land on
-// whichever role happens to be first.
+// Caller built without one, must fail closed rather than land on whichever
+// role happens to be first.
 func TestTheZeroValueIsTheWeakestRole(t *testing.T) {
 	t.Parallel()
 
@@ -92,45 +101,26 @@ func TestTheRanksAreOrderedWeakestToStrongest(t *testing.T) {
 	}
 }
 
-// ADR-0011: the effective role is the higher of the two, so that a folder
-// invitation can only ever add. Checked over every pair rather than a few
-// examples, because "the higher one" is the kind of claim that is easy to
-// write and easy to get backwards.
-func TestMaxAlwaysReturnsTheStrongerOfThePair(t *testing.T) {
+// owner outranks everything. It is stated on its own because the rest of the
+// package leans on it: Resolver skips the membership check for exactly this
+// rank, and nothing above it exists to catch a mistake.
+func TestOwnerIsTheHighestRank(t *testing.T) {
 	t.Parallel()
 
-	for _, a := range allRoles {
-		for _, b := range allRoles {
-			got := authz.Max(a, b)
+	for _, r := range allRoles {
+		if !authz.RoleOwner.AtLeast(r) {
+			t.Errorf("owner does not satisfy %v", r)
+		}
 
-			if !got.AtLeast(a) || !got.AtLeast(b) {
-				t.Errorf("Max(%v, %v) = %v, which is weaker than one of them", a, b, got)
-			}
-
-			if got != a && got != b {
-				t.Errorf("Max(%v, %v) = %v, which is neither of them", a, b, got)
-			}
-
-			if flipped := authz.Max(b, a); flipped != got {
-				t.Errorf("Max(%v, %v) = %v but Max(%v, %v) = %v", a, b, got, b, a, flipped)
-			}
+		if r != authz.RoleOwner && r.AtLeast(authz.RoleOwner) {
+			t.Errorf("%v satisfies owner", r)
 		}
 	}
 }
 
-// A folder membership must never take rights away — the case ADR-0011 rejects
-// "most specific wins" for, written out as the situation it protects.
-func TestAFolderRoleCannotDemoteAProjectAdmin(t *testing.T) {
-	t.Parallel()
-
-	if got := authz.Max(authz.RoleAdmin, authz.RoleViewer); got != authz.RoleAdmin {
-		t.Errorf("a project admin invited to the folder as a viewer became %v", got)
-	}
-}
-
-// The stored spelling has to survive the round trip, or a role read from one
-// table and written to another would change meaning on the way.
-func TestTheThreeStoredRolesSurviveARoundTrip(t *testing.T) {
+// The stored spelling has to survive the round trip, or a role read from the
+// database and written back would change meaning on the way.
+func TestTheFourStoredRolesSurviveARoundTrip(t *testing.T) {
 	t.Parallel()
 
 	for _, r := range allRoles[1:] {

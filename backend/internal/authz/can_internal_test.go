@@ -15,11 +15,9 @@ func TestARuleWithNothingFilledInGrantsNothing(t *testing.T) {
 	// The opposite default is the one that never announces itself. A rule that
 	// accidentally allows everybody produces no error, no failing request, and
 	// no log line — just somebody reading what was never theirs.
-	for _, role := range []Role{RoleNone, RoleViewer, RoleMember, RoleAdmin} {
-		for _, owner := range []bool{false, true} {
-			if decide(Caller{UserID: "u", IsOwner: owner}, rule{}, role) {
-				t.Errorf("an empty rule allowed owner=%v role=%v", owner, role)
-			}
+	for _, role := range []Role{RoleNone, RoleViewer, RoleContributor, RoleMaintainer, RoleOwner} {
+		if decide(Caller{UserID: "u", Role: role}, rule{}) {
+			t.Errorf("an empty rule allowed %v", role)
 		}
 	}
 }
@@ -37,8 +35,8 @@ func TestForbiddenRefusesEvenWhenARankWouldOtherwiseAllow(t *testing.T) {
 
 	forbidding := rule{minimum: RoleViewer, forbidden: true}
 
-	for _, role := range []Role{RoleViewer, RoleMember, RoleAdmin} {
-		if decide(Caller{UserID: "u", IsOwner: true}, forbidding, role) {
+	for _, role := range []Role{RoleViewer, RoleContributor, RoleMaintainer, RoleOwner} {
+		if decide(Caller{UserID: "u", Role: role}, forbidding) {
 			t.Errorf("a forbidden action was allowed for %v", role)
 		}
 	}
