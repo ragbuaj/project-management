@@ -39,6 +39,23 @@ punya `deleted_at` mendapat view `<nama>_live` yang sudah menyaringnya, dan
 seluruh query `sqlc` membaca dari view. Satu `WHERE` yang terlupa berarti
 kebocoran data, dan disiplin manusia bukan mekanisme yang bisa diandalkan.
 
+**View ditulis dengan daftar kolom eksplisit, bukan `SELECT *`.** PostgreSQL
+mengembangkan `*` saat view dibuat lalu membekukannya — view yang didefinisikan
+dengan `*` diam-diam berhenti menampilkan kolom yang ditambahkan kemudian, dan
+kebocoran soft delete adalah hal yang tidak ada yang sadari sampai terlambat.
+`TestLiveViewsMatchTheirTables` menyisir setiap tabel ber-`deleted_at` dan
+membuktikan view-nya masih sepadan; ia otomatis mencakup tabel yang belum ada.
+
+## Konvensi migration
+
+| Aturan | Nilai | Alasan |
+|---|---|---|
+| Perkakas | goose, **maju saja** | `cmd/migrate` sengaja tidak punya perintah `down`. Tombol rollback yang ada adalah tombol yang ditekan jam tiga pagi |
+| Penamaan | `NNNNN_nama.sql` berurutan | Nomor urut membuat urutannya terbaca saat review; timestamp tidak |
+| Baris pertama setiap berkas | `SET lock_timeout = '5s';` dan `SET statement_timeout = '5min';` | Tanpa `lock_timeout`, migration mengantre di belakang query panjang dan semua yang datang sesudahnya mengantre di belakang migration. Satu laporan lambat menghentikan seluruh database |
+| Indeks pada tabel yang dibuat di berkas yang sama | `-- squawk-ignore require-concurrent-index-creation` | Belum ada baris dan belum ada sesi lain, dan `CONCURRENTLY` mustahil di dalam transaksi |
+| Indeks pada tabel yang **sudah ada** | `-- +goose NO TRANSACTION` + `CREATE INDEX CONCURRENTLY`, di berkas tersendiri | Di sinilah `require-concurrent-index-creation` berguna, dan ia tetap menyala — lihat `.squawk.toml` |
+
 ## ERD — inti
 
 ```mermaid
@@ -114,6 +131,9 @@ CREATE TABLE invitations (
     email       text NOT NULL,                          -- 🔒 data pribadi
     token_hash  bytea NOT NULL,
     invited_by  uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    -- FK ditambahkan di migration 00002, bukan di sini: `projects` belum ada
+    -- saat `invitations` dibuat. Bentuk di bawah membaca enak sebagai
+    -- deskripsi skema, tapi tidak bisa dijalankan berurutan.
     project_id  uuid REFERENCES projects(id) ON DELETE CASCADE,
     role        text NOT NULL CHECK (role IN ('admin','member','viewer')),
     expires_at  timestamptz NOT NULL,
