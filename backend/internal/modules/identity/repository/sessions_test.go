@@ -98,10 +98,21 @@ func TestASoftDeletedUsersSessionStopsAuthenticating(t *testing.T) {
 // Sliding renewal has to move the deadline the caller computed, not one the
 // database invents, or the absolute ninety-day ceiling means nothing.
 func TestTouchingASessionMovesTheDeadlineTheCallerAsksFor(t *testing.T) {
-	ctx, _, q := queriesTx(t)
+	ctx, tx, q := queriesTx(t)
 
 	user := createUser(t, ctx, q, "returning@example.test", "Returning")
 	digest := issueSession(t, ctx, q, user, time.Now().Add(time.Hour))
+
+	// now() is the transaction's start time, and this whole test is one
+	// transaction — so the touch below would write the same instant the insert
+	// did. Backdating first is what makes the assertion mean anything; in
+	// production each request is its own transaction and the two differ on
+	// their own.
+	if _, err := tx.Exec(ctx,
+		`UPDATE sessions SET last_seen_at = now() - interval '1 hour' WHERE token_hash = $1`,
+		digest); err != nil {
+		t.Fatalf("backdate last_seen_at: %v", err)
+	}
 
 	before, err := q.GetSessionByTokenHash(ctx, digest)
 	if err != nil {
