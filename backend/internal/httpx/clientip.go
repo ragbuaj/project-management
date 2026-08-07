@@ -144,3 +144,55 @@ func RateLimitKey(addr netip.Addr) string {
 
 	return addr.Unmap().String()
 }
+
+// The network an address belongs to, for the bucket that counts a whole
+// network rather than one caller.
+//
+// /24 and /48 are the same two boundaries ADR-0010 already names for truncating
+// addresses in long-term logs, and reusing them means this application has one
+// notion of "the network this address is part of" rather than two that drift.
+//
+// /24 is the smallest IPv4 block that is still routed as a unit, so it is the
+// smallest thing an attacker cannot assemble out of unrelated addresses. /48 is
+// a whole site allocation in IPv6 — one organization — which sits exactly one
+// level above the /64 RateLimitKey already treats as one caller.
+const (
+	ipv4NetworkBits = 24
+	ipv6NetworkBits = 48
+)
+
+// RateLimitPrefixKey turns an address into the key its network's bucket counts
+// against.
+//
+// This exists because the per-address bucket is defeated by spreading the work
+// out. Thirty attempts from each of two hundred addresses stays under every
+// per-address limit and is still six thousand guesses, and a rented /24 or a
+// single IPv6 site costs an attacker almost nothing. Counting the network
+// catches the spread; counting only the address never can.
+//
+// It is deliberately not the only bucket either. A whole university or ISP
+// block can sit inside one /24, so this number has to stay loose enough that
+// honest traffic never reaches it — which is why the account bucket, the one
+// that can actually be tight, exists alongside it.
+func RateLimitPrefixKey(addr netip.Addr) string {
+	// Unmapped first: a 4-in-6 address is IPv4 wearing an IPv6 shape, and
+	// taking 48 bits of it would key on part of the ::ffff: prefix that every
+	// mapped address shares — one bucket for the entire IPv4 internet.
+	addr = addr.Unmap()
+
+	bits := ipv4NetworkBits
+	if addr.Is6() {
+		bits = ipv6NetworkBits
+	}
+
+	prefix, err := addr.Prefix(bits)
+	if err != nil {
+		// Only reachable for an address whose bit length is smaller than the
+		// mask, which netip does not produce from either parse path. Keying on
+		// the address itself is narrower than intended rather than wider, so it
+		// throttles less than it should instead of throttling strangers.
+		return addr.String()
+	}
+
+	return prefix.String()
+}

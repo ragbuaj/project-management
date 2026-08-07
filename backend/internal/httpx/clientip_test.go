@@ -238,3 +238,97 @@ func TestAMappedIPv4KeysTheSameAsThePlainOne(t *testing.T) {
 			httpx.RateLimitKey(plain), httpx.RateLimitKey(mapped))
 	}
 }
+
+// The whole point of the network bucket: addresses that defeat the per-address
+// limit by being different must still land together.
+func TestNeighboursInOneIPv4NetworkShareABucket(t *testing.T) {
+	t.Parallel()
+
+	var (
+		first    = netip.MustParseAddr("203.0.113.1")
+		last     = netip.MustParseAddr("203.0.113.254")
+		nextDoor = netip.MustParseAddr("203.0.114.1")
+	)
+
+	if httpx.RateLimitPrefixKey(first) != httpx.RateLimitPrefixKey(last) {
+		t.Error("two addresses in one /24 were counted separately")
+	}
+
+	if httpx.RateLimitPrefixKey(first) == httpx.RateLimitPrefixKey(nextDoor) {
+		t.Error("two different /24s were counted together")
+	}
+
+	// And it has to be looser than the per-address bucket, or it is just a
+	// second copy of it.
+	if httpx.RateLimitKey(first) == httpx.RateLimitKey(last) {
+		t.Error("the per-address bucket already merged them; the network bucket adds nothing")
+	}
+}
+
+// One IPv6 site is one allocation, so /48 is what an attacker cannot assemble
+// out of unrelated addresses. The per-address bucket already treats a /64 as
+// one caller, so this has to be wider than that and no wider than a site.
+func TestOneIPv6SiteIsOneBucket(t *testing.T) {
+	t.Parallel()
+
+	var (
+		here         = netip.MustParseAddr("2001:db8:1:1::1")
+		otherSlash64 = netip.MustParseAddr("2001:db8:1:ffff::1")
+		otherSite    = netip.MustParseAddr("2001:db8:2:1::1")
+	)
+
+	if httpx.RateLimitPrefixKey(here) != httpx.RateLimitPrefixKey(otherSlash64) {
+		t.Error("two /64s inside one /48 were counted separately")
+	}
+
+	if httpx.RateLimitPrefixKey(here) == httpx.RateLimitPrefixKey(otherSite) {
+		t.Error("two different /48s were counted together")
+	}
+
+	if httpx.RateLimitKey(here) == httpx.RateLimitKey(otherSlash64) {
+		t.Error("the per-address bucket already merged them; the network bucket adds nothing")
+	}
+}
+
+// A mapped IPv4 address must be treated as IPv4. Masking 48 bits of ::ffff:a.b.c.d
+// keeps only the part every mapped address shares, which would put the entire
+// IPv4 internet into one bucket and throttle everybody the moment one guesser
+// arrives over a dual-stack socket.
+func TestAMappedIPv4NetworkKeysAsIPv4(t *testing.T) {
+	t.Parallel()
+
+	var (
+		plain     = netip.MustParseAddr("203.0.113.1")
+		mapped    = netip.MustParseAddr("::ffff:203.0.113.1")
+		elsewhere = netip.MustParseAddr("::ffff:198.51.100.1")
+	)
+
+	if httpx.RateLimitPrefixKey(plain) != httpx.RateLimitPrefixKey(mapped) {
+		t.Errorf("plain %q and mapped %q key differently",
+			httpx.RateLimitPrefixKey(plain), httpx.RateLimitPrefixKey(mapped))
+	}
+
+	if httpx.RateLimitPrefixKey(mapped) == httpx.RateLimitPrefixKey(elsewhere) {
+		t.Error("two unrelated mapped IPv4 addresses share a bucket; the mask ate the ::ffff: prefix")
+	}
+}
+
+// The two keys must never collide. They are counted in separate buckets with
+// separate limits, and a shared key would silently add one's traffic to the
+// other's total.
+func TestTheAddressKeyAndTheNetworkKeyNeverCollide(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{
+		"203.0.113.1",
+		"::ffff:203.0.113.1",
+		"2001:db8:1:1::1",
+		"::1",
+	} {
+		addr := netip.MustParseAddr(raw)
+
+		if httpx.RateLimitKey(addr) == httpx.RateLimitPrefixKey(addr) {
+			t.Errorf("%s keys the same in both buckets: %q", raw, httpx.RateLimitKey(addr))
+		}
+	}
+}
