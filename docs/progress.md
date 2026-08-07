@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `323084a`.
+**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `98c5b4d`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -11,11 +11,11 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 
 ## Ringkasan
 
-**36 selesai · 0 sedang · 9 belum**
+**38 selesai · 0 sedang · 9 belum**
 
 Fase 0 punya **31 sub-langkah**: Langkah 9, 11, dan 15 dipecah jadi beberapa PR
 atas permintaan pemilik. Dari 31 itu, **22 selesai dan 9 belum**. Ditambah 10
-item gerbang dokumen dan 4 item perubahan cakupan, semuanya selesai.
+item gerbang dokumen dan 6 item perubahan cakupan, semuanya selesai.
 
 **Skema dan fondasi backend selesai.** Tujuh migration, 33 tabel, 5 view
 `*_live`, `sqlc` terpasang dengan gerbang CI-nya, `internal/httpx` lengkap —
@@ -25,22 +25,31 @@ request ID, log terstruktur, recovery, bentuk error, rate limit — dan
 Langkah 15 dan 16 selesai: aplikasi bisa memasukkan orang, mengenalinya di
 permintaan berikutnya, dan mengeluarkannya — dan sejak Langkah 16 setiap
 permintaan yang mengubah data wajib membawa pasangan CSRF. Skema folder sudah masuk
-(`00008`) dan Langkah 17 selesai: `internal/authz` memutuskan aksi project dan
-folder dari satu tabel, dengan `EffectiveRole` sebagai satu-satunya tempat
-pewarisan folder hidup. Yang tersisa dimulai dari Langkah 18 (undangan, reset
-password, daftar sesi), lalu seluruh frontend.
+(`00008`), peran akun sudah jadi satu-satunya sumber hak (`00009`, `00010`),
+dan Langkah 17 selesai: `internal/authz` memutuskan dari peran akun ditambah
+satu pemeriksaan keanggotaan, dengan pengecualian owner hidup di satu tempat.
+Yang tersisa dimulai dari Langkah 18 (undangan, reset password, daftar sesi),
+lalu seluruh frontend.
 
 **Yang belum punya implementasi:** antarmuka `authz.Memberships` sengaja tanpa
 implementasi sampai modul project lahir di Fase 1 — `project_members` dan
 `folder_members` miliknya, dan `sqlc.yaml` memegang satu entri per modul. Pola
 yang sama dengan `httpx.Limiter`, yang implementasi Redis-nya menyusul di
-Langkah 18.
+Langkah 18. Sampai itu ada, belum satu pun query otorisasi yang pernah
+dijalankan terhadap database.
 
-**Model otorisasi berubah pada 2026-08-07.** Setiap akun kini boleh membuat
-project, dan project dikelompokkan ke dalam **folder** yang keanggotaannya
-diwariskan ([ADR-0011](adr/0011-folder-dan-pewarisan-keanggotaan.md)). Sejak
-itu peran atas sebuah project punya dua sumber, dan `internal/authz` harus
-dibangun untuk keduanya sejak baris pertamanya.
+**Model otorisasi berubah dua kali dalam dua hari, dan yang kedua membatalkan
+sebagian yang pertama.** Pada 2026-08-07 project dikelompokkan ke dalam folder
+yang keanggotaannya diwariskan ([ADR-0011](adr/0011-folder-dan-pewarisan-keanggotaan.md)).
+Pada 2026-08-08 hak dipindahkan dari keanggotaan ke akun
+([ADR-0012](adr/0012-peran-akun-dan-akses-owner.md)): `users.role` berisi
+`owner`, `maintainer`, `contributor`, atau `viewer`, dan keanggotaan tinggal
+menentukan jangkauan. Aturan peran efektif ADR-0011 batal; pewarisan
+keanggotaannya tetap.
+
+`internal/authz` karena itu ditulis ulang **di hari yang sama ia selesai**.
+Bukti Langkah 17 menyebut kedua rangkaian PR-nya dengan sengaja: menandainya
+selesai lalu diam-diam menggantinya adalah cara catatan ini berbohong.
 
 > **Angka ringkasan pernah dua kali salah, dan keduanya dicatat di sini.**
 >
@@ -83,6 +92,9 @@ dibangun untuk keduanya sejak baris pertamanya.
 >
 > Rekonsiliasi kesebelas (2026-08-08, `323084a`): 35 baris, 26 `selesai`,
 > 9 `belum`. Jadi 36 · 0 · 9.
+>
+> Rekonsiliasi kedua belas (2026-08-08, `98c5b4d`): dua baris bertambah untuk
+> pekerjaan ADR-0012 — 37 baris, 28 `selesai`, 9 `belum`. Jadi 38 · 0 · 9.
 
 ## Gerbang dokumen (sebelum baris kode pertama)
 
@@ -130,7 +142,9 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | 15c | `identity` — `/login`, `/logout`, `/me` | selesai | Rencana Fase 0 §15, ADR-0005 | PR #38, #39, #40, #41 (`b67d79c`) |
 | 16 | Middleware CSRF double-submit | selesai | Rencana Fase 0 §16, ADR-0005 | PR #46, #47 (`82b3e4d`) |
 | — | Migration `00008` `folders`, `folder_members`, `projects.folder_id` | selesai | Perubahan cakupan, lihat bawah; [ADR-0011](adr/0011-folder-dan-pewarisan-keanggotaan.md) | PR #51 (`17cd30c`) |
-| 17 | `internal/authz` + table-driven test **enam** pola | selesai | Rencana Fase 0 §17, [authorization.md](authorization.md), ADR-0011 | PR #53, #54, #55 (`323084a`) |
+| — | Migration `00009` & `00010` — peran akun, dan pembuangan `is_owner` | selesai | Perubahan cakupan, lihat bawah; [ADR-0012](adr/0012-peran-akun-dan-akses-owner.md) | PR #59, #60, #63 (`98c5b4d`) |
+| — | Modul identity membawa peran akun, bukan `is_owner` | selesai | ADR-0012 | PR #61 |
+| 17 | `internal/authz` + table-driven test **tujuh** pola | selesai | Rencana Fase 0 §17, [authorization.md](authorization.md), ADR-0012 | PR #53, #54, #55, lalu **ditulis ulang** di #62 (`94d2303`) |
 | 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | belum | Rencana Fase 0 §18 | — |
 | 19 | **Gerbang manusia:** arah desain tertulis | belum | Rencana Fase 0 §19, `rules/15-ui-design.md` §2 | — |
 | 20 | Scaffold Vite + shadcn + token | belum | Rencana Fase 0 §20 | — |
@@ -166,6 +180,10 @@ yang **mengubah cara kerja**, bukan sejarah.
   `go test ./...`. Migration `00008` lolos di database lokal dan gagal di
   database kosong; bedanya bukan isi skemanya, melainkan paket test yang
   bermigrasi bersamaan.
+- **`oasdiff breaking` tidak menangkap penghapusan properti dari respons.**
+  PR #61 menghapus `is_owner` dari `/me` dan `/auth/login` — perubahan yang
+  merusak setiap klien yang membacanya — dan gerbangnya hijau. Ia menjaga sisi
+  permintaan; sisi respons harus dijaga mata.
 - **Jangan pakai `CREATE INDEX CONCURRENTLY` di migration repo ini.** Ia
   menunggu setiap transaksi yang bisa melihat tabelnya, kena `lock_timeout`,
   dan karena `-- +goose NO TRANSACTION` tidak bisa di-rollback, ia meninggalkan
@@ -296,6 +314,10 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-07 | Repo dijadikan publik | Branch protection, ruleset, *secret scanning*, dan *push protection* semuanya digerbang plan: gratis hanya untuk repo publik. Push protection adalah kontrol yang sebelumnya tidak ada — ia menolak secret sebelum commit-nya mendarat, sedangkan `gitleaks` di CI baru berteriak setelah ter-push | ya — keputusan pemilik pada 2026-08-07 |
 | 2026-08-07 | Log sesi (`docs/sessions/`) dilepas dari repo dan masuk `.gitignore` | Permintaan pemilik, menyusul repo jadi publik. Isinya catatan proses, bukan dokumentasi proyek. Konsekuensinya: klon baru tidak membawa riwayat sesi, jadi `progress.md` menjadi satu-satunya pembawa konteks antar-sesi yang ikut repo | ya |
 | 2026-08-07 | `oasdiff` dipin ke v1.28.0 dan dipasang dengan `GOTOOLCHAIN=auto` | Gerbang kontrak berhenti bisa memasang alatnya: `@latest` menuntut Go 1.26. Sekaligus menghapus `@latest` — gerbang yang alatnya tidak dipin bisa berubah perilakunya tanpa satu pun commit di repo ini | ya — ditanyakan dan disetujui pemilik pada 2026-08-07 |
+| 2026-08-08 | **Hak dipindahkan dari keanggotaan ke akun.** `users.role` jadi satu-satunya sumber hak; kolom `role` di `project_members` dan `folder_members` dihapus | Permintaan pemilik. Penggunanya pegawai, dan jabatan pegawai tidak berubah karena ia pindah project. Rancangan sebelumnya menduplikasi jabatan itu ke setiap baris keanggotaan dan menyisakan pertanyaan tanpa jawaban benar: manajer yang diundang ke project lain, diundang sebagai apa. Lihat [ADR-0012](adr/0012-peran-akun-dan-akses-owner.md) | ya — keputusan pemilik |
+| 2026-08-08 | **`owner` menjadi akses penuh ke semua folder dan project**, tanpa perlu keanggotaan, dengan setiap akses di luar keanggotaan tercatat di `activity_events` | Permintaan pemilik, membalik daftar tertutup yang sebelumnya menahan owner dari isi project. Konsekuensinya dinyatakan di ADR: satu akun bisa membaca seluruh instalasi, jadi 2FA untuk akun owner naik dari "kalau sempat" menjadi layak dijadwalkan | ya — keputusan pemilik |
+| 2026-08-08 | Peran dinamai `owner` / `maintainer` / `contributor` / `viewer` | Kosakata GitHub dan GitLab, dan bentuknya kemampuan bukan jabatan — nama seperti `engineer` atau `tech_lead` akan salah untuk QA, desainer, dan analis sejak hari pertama | ya — dipilih pemilik dari empat usulan |
+| 2026-08-08 | Migration `00009` disunting di tempat saat penggantian nama, bukan ditimpa migration rename | Diperiksa lebih dulu: satu-satunya database yang ada berada di versi 8, jadi belum ada instalasi yang menerapkannya. goose tidak menyimpan checksum, jadi kalau sudah ada yang menerapkan, jawabannya harus berbeda | ya |
 | 2026-08-08 | Kolom `owner` di tiga baris pengelolaan anggota diubah dari `ya` menjadi `—` di [authorization.md](authorization.md) | Matriks dan daftar tertutup di dokumen yang sama saling bertentangan; daftar itu menyatakan dirinya tertutup dan tidak memuat ketiganya. Ditemukan saat menerjemahkan matriks jadi tabel `internal/authz`. Daftar tertutup yang dimenangkan karena lebih ketat dan tidak menghilangkan apa pun: owner menambahkan dirinya sebagai `admin` lebih dulu, langkah yang tercatat dan memberi tahu anggota | ya — lewat merge PR #55, yang deskripsinya menjelaskan pilihan ini |
 | 2026-08-08 | `Project \| hapus permanen` ditegakkan sebagai **owner dan anggota**, bukan salah satunya | Ambiguitas yang sama: matriks menulis "Harus anggota", daftar tertutup menyebutnya hak di luar keanggotaan. Diambil yang lebih ketat | ya — lewat merge PR #55 |
 | 2026-08-07 | Pembuatan project dibuka untuk **setiap akun aktif**, bukan hanya `owner` instalasi | Permintaan pemilik. Aman karena pendaftaran mandiri tetap non-goal: akun hanya lahir dari undangan `owner`, jadi himpunan pembuatnya tetap terkendali. Tidak butuh migration — `projects.created_by` sudah ada sejak `00002` | ya |
