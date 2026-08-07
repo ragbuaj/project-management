@@ -1,7 +1,10 @@
 package httpx
 
 import (
+	"crypto/rand"
 	"crypto/subtle"
+	"encoding/base64"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -16,8 +19,8 @@ import (
 // definition — a browser refuses one that names a Domain — so a sibling
 // cannot set it.
 //
-// The cookie itself is not HttpOnly, because the client has to read it to send
-// the header. Issuing it is the other half of this step and lands next.
+// It is deliberately not HttpOnly. The SPA has to read it to echo it back in
+// the header, and that echo is the entire mechanism.
 const CSRFCookieName = "__Host-csrf"
 
 // CSRFHeaderName is the other half. A header is what makes this work at all:
@@ -26,10 +29,20 @@ const CSRFCookieName = "__Host-csrf"
 // this server never grants.
 const CSRFHeaderName = "X-CSRF-Token"
 
-// CSRF refuses a request that changes something unless it presents the pair.
+// csrfTokenBytes matches the session token in ADR-0005. The value is compared
+// against itself rather than looked up, so nothing here depends on its width —
+// but a token narrow enough to guess would make the pair guessable, and 256
+// bits is not.
+const csrfTokenBytes = 32
+
+// CSRF refuses a request that changes something unless it presents the pair,
+// and hands a token to callers that do not have one yet.
 //
-// ADR-0005 asks for this at the router rather than per handler, so that
-// forgetting it is not an option a future handler has.
+// Both halves live here on purpose. ADR-0005 asks for the check at the router
+// rather than per handler, so that forgetting it is not an option a future
+// handler has; issuing the cookie anywhere else would reopen exactly that hole
+// from the other side, because a mutating endpoint would then depend on some
+// earlier endpoint having remembered to hand out a token.
 //
 // A caller presenting Authorization: Bearer is exempt (ADR-0005). That token
 // is not an ambient credential — a browser never attaches it on its own, so
@@ -37,13 +50,32 @@ const CSRFHeaderName = "X-CSRF-Token"
 func CSRF(log *slog.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			presented, ok := csrfCookieToken(r)
+			if !ok {
+				// Either the caller has never been here, or it holds a value
+				// this server did not issue. Replacing it is what keeps the
+				// second case from being a browser that can never POST again.
+				//
+				// Written before anything else touches the response, because a
+				// status that is already out cannot grow headers afterwards.
+				if err := setCSRFCookie(w); err != nil {
+					WriteInternalError(w, r, log, err)
+
+					return
+				}
+			}
+
 			if csrfExempt(r) {
 				next.ServeHTTP(w, r)
 
 				return
 			}
 
-			if reason := csrfFailure(csrfCookieToken(r), r.Header.Get(CSRFHeaderName)); reason != "" {
+			// A token minted a moment ago was not presented with this request,
+			// so presented is still empty and the check below refuses. That is
+			// the intent: the first request a client makes must not be one that
+			// changes data.
+			if reason := csrfFailure(presented, r.Header.Get(CSRFHeaderName)); reason != "" {
 				// ADR-0005 asks for this to be watched: in production the count
 				// should be zero, and anything above it is either a
 				// misconfigured client or somebody trying. Neither token half
@@ -85,13 +117,56 @@ func csrfExempt(r *http.Request) bool {
 	}
 }
 
-func csrfCookieToken(r *http.Request) string {
+// csrfCookieToken returns the token the request presents, and whether it is
+// one this server could have issued.
+//
+// The shape is checked so that a malformed value is replaced rather than
+// carried around. It is not a security check: the pair is compared against
+// itself, so a well-formed value nobody issued would still match a header
+// echoing it. What stops that from being an attack is the __Host- prefix,
+// which is why the cookie carries it.
+func csrfCookieToken(r *http.Request) (string, bool) {
 	cookie, err := r.Cookie(CSRFCookieName)
 	if err != nil {
-		return ""
+		return "", false
 	}
 
-	return cookie.Value
+	raw, err := base64.RawURLEncoding.DecodeString(cookie.Value)
+	if err != nil || len(raw) != csrfTokenBytes {
+		return "", false
+	}
+
+	return cookie.Value, true
+}
+
+// setCSRFCookie mints a token and writes it.
+//
+// No Expires and no Max-Age, so it lives as long as the browser session —
+// shorter than the 14-day session cookie on purpose. Losing it costs one safe
+// request to get another, and every way into this application starts with one:
+// the SPA is loaded with a GET.
+func setCSRFCookie(w http.ResponseWriter) error {
+	raw := make([]byte, csrfTokenBytes)
+	if _, err := rand.Read(raw); err != nil {
+		return fmt.Errorf("read csrf token: %w", err)
+	}
+
+	// gosec G124 asks for HttpOnly on every cookie, and this is the one place
+	// it cannot be given: a cookie the SPA cannot read is a header the SPA can
+	// never send. The other two attributes it looks for are set, and the
+	// __Host- prefix covers what HttpOnly would not have anyway.
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: this cookie exists to be read by the client
+		Name:  CSRFCookieName,
+		Value: base64.RawURLEncoding.EncodeToString(raw),
+		Path:  "/",
+		// Stated rather than left to the zero value, so it reads as decided
+		// rather than forgotten.
+		HttpOnly: false,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	return nil
 }
 
 // csrfFailure names why the pair was refused, or returns "" when it holds.
