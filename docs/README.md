@@ -38,7 +38,7 @@ Dokumen 1–7 harus selesai dan disetujui sebelum implementasi dimulai.
 | [roadmap.md](roadmap.md) | Peta 11 fase, isi tiap fase, dan alasan urutannya |
 | [feature-catalog.md](feature-catalog.md) | Daftar fitur beserta ID yang dirujuk roadmap |
 | [progress.md](progress.md) | Progres nyata yang terekonsiliasi dengan repo — **mulai dari sini di sesi baru** |
-| [sessions/](sessions/) | Log per sesi kerja, dengan bukti perintah |
+| `docs/sessions/` | Log per sesi kerja, dengan bukti perintah. **Lokal saja** — ada di `.gitignore` dan tidak ikut repo, karena isinya catatan proses untuk melanjutkan pekerjaan, bukan bagian dari dokumentasi proyek |
 
 ## Aturan pemeliharaan
 
