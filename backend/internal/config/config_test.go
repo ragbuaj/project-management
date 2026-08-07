@@ -336,3 +336,54 @@ func TestLoadNeverEchoesTheRedisPassword(t *testing.T) {
 		t.Errorf("the error message does not name the variable: %v", err)
 	}
 }
+
+// Empty is the safe default and the correct value for a server reached
+// directly: with nothing here, no X-Forwarded-For is ever believed.
+func TestTrustedProxiesDefaultsToNothing(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Load(lookupFrom(valid()))
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+
+	if len(cfg.TrustedProxies) != 0 {
+		t.Errorf("TrustedProxies = %v, want empty", cfg.TrustedProxies)
+	}
+}
+
+func TestTrustedProxiesAcceptsRangesAndBareAddresses(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Load(lookupFrom(with(map[string]string{
+		"TRUSTED_PROXIES": "10.0.0.0/8, 203.0.113.7 ,2001:db8::/32",
+	})))
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+
+	if len(cfg.TrustedProxies) != 3 {
+		t.Fatalf("got %d prefixes, want 3: %v", len(cfg.TrustedProxies), cfg.TrustedProxies)
+	}
+
+	// A bare address is a single host, not a range that quietly includes its
+	// neighbors.
+	if got := cfg.TrustedProxies[1].String(); got != "203.0.113.7/32" {
+		t.Errorf("bare address became %q, want a single-host range", got)
+	}
+}
+
+// A proxy that was meant to be trusted and is not makes the application
+// attribute every request to that proxy — one rate-limit bucket for the whole
+// world, a symptom that looks nothing like a typo in an environment variable.
+// So a malformed entry stops start-up instead.
+func TestAMalformedTrustedProxyStopsStartUp(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{"10.0.0.0/99", "not-an-address", "10.0.0.1-10.0.0.9"} {
+		_, err := config.Load(lookupFrom(with(map[string]string{"TRUSTED_PROXIES": raw})))
+		if !errors.Is(err, config.ErrInvalid) {
+			t.Errorf("TRUSTED_PROXIES=%q loaded with err = %v", raw, err)
+		}
+	}
+}

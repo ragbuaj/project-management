@@ -55,6 +55,7 @@ isian asal-asalan, dan isian asal-asalan sampai ke produksi.
 | `DATABASE_URL` | ya | ✅ | Koneksi PostgreSQL |
 | `DATABASE_MAX_CONNS` | — | — | Default 20. Dibatasi sadar — sepuluh instance dengan pool 50 berarti 500 koneksi |
 | `REDIS_URL` | ya | ✅ | Koneksi Redis |
+| `TRUSTED_PROXIES` | — | — | Daftar CIDR yang dipisah koma, contoh `10.0.0.5/32`. **Kosong berarti tidak ada header `X-Forwarded-For` yang pernah dipercaya**, dan itu nilai yang benar untuk server yang dihubungi langsung. Ditulis eksplisit sebagai alamat Caddy saja, bukan "semua alamat privat" ([ADR-0010](adr/0010-ip-klien-dan-rate-limit.md)) |
 | `SESSION_HASH_KEY` | ya | ✅ | 32 byte base64. Kunci HMAC untuk hash token sesi |
 | `ENCRYPTION_KEY` | ya | ✅ | 32 byte base64. AES-GCM untuk `vcs_connections.credential_enc` |
 
