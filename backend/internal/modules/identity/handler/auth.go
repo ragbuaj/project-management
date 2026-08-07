@@ -123,6 +123,29 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, loginResponse{User: bodyOf(user)})
 }
 
+// Logout ends the session the cookie names and clears the cookie.
+//
+// It answers 204 whether or not there was a session to end. A caller who has
+// been signed out already, or who never was, still wants the same thing to be
+// true afterwards, and telling them apart would only say whether the cookie
+// they hold is real.
+func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie(SessionCookieName)
+	if err == nil {
+		if err := a.sessions.Revoke(r.Context(), cookie.Value); err != nil {
+			// Reported rather than swallowed: the session is still live, and
+			// answering 204 would tell someone they are signed out when they
+			// are not.
+			httpx.WriteInternalError(w, r, a.log, err)
+
+			return
+		}
+	}
+
+	clearSessionCookie(w)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // setSessionCookie writes the cookie ADR-0005 specifies.
 //
 // SameSite=Lax rather than Strict is deliberate and explained in ADR-0005:
@@ -134,6 +157,20 @@ func setSessionCookie(w http.ResponseWriter, token string, expires time.Time) {
 		Value:    token,
 		Path:     "/",
 		Expires:  expires,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// clearSessionCookie overwrites the cookie with an expired one. The attributes
+// have to match the ones it was set with, or the browser keeps both.
+func clearSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     SessionCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
