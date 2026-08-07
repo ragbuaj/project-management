@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `b67d79c`.
+**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `e45f46c`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -111,6 +111,31 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | 25 | Dockerfile, `compose.prod.yml`, Caddy, workflow deploy | belum | Rencana Fase 0 §25 | — |
 | 26 | Backup + uji restore sungguhan | belum | Rencana Fase 0 §26 | — |
 
+## Yang perlu diketahui sebelum menulis baris pertama
+
+Log sesi tidak lagi ikut repo (lihat perubahan cakupan di bawah), jadi berkas
+ini satu-satunya yang membawa konteks antar-sesi. Isi bagian ini adalah hal
+yang **mengubah cara kerja**, bukan sejarah.
+
+- **Branch protection ditegakkan server sejak 2026-08-07.** Nol approval, dua
+  check wajib, berlaku untuk admin. `gh pr merge --auto` sekarang aman.
+- **Jangan menambah `oasdiff`, `sqlc`, atau `migrations` sebagai check wajib.**
+  Ketiganya disaring per-path dan tidak melapor di PR yang tidak menyentuh
+  path-nya — PR dokumen akan menggantung selamanya di *Expected*.
+- **Test skema dan repository skip diam-diam tanpa `TEST_DATABASE_URL` dan
+  `TEST_REDIS_URL`,** dan hasilnya tetap terlihat `ok`. Di mesin pengembangan
+  utama Docker sering tidak berjalan, jadi **CI yang memverifikasinya**, dari
+  database kosong.
+- **`go test -race` tidak bisa dijalankan lokal** — detektornya menuntut cgo.
+  Untuk apa pun yang menyentuh konkurensi, CI-lah verifikasinya.
+- **Target 400 baris per PR itu nyata.** Pada 2026-08-07 pekerjaan dipecah lima
+  kali *sesudah* ditulis, yang berarti menulis ulang test untuk potongan yang
+  berbeda. Putuskan potongannya sebelum menulis, bukan sesudah.
+- **Mutasi yang tidak kompilasi tidak menguji apa pun.** Melepas satu pemakaian
+  sering membuat impor jadi tak terpakai; `go test` berhenti di build dan
+  hasilnya terbaca seperti test yang lemah. Ini terjadi tiga kali dalam satu
+  sesi sebelum polanya disadari.
+
 ## Penghalang
 
 **Tidak ada.**
@@ -126,6 +151,7 @@ menuntut cgo.
 | Pertanyaan | Sejak | Memblokir |
 |---|---|---|
 | Peran default untuk rekan yang diundang: `admin` (saran saya) atau pindahkan sebagian aksi dari `admin` ke `member`? | 2026-08-06 | Fase 2, bukan Fase 0 |
+| Pin `gitleaks` di `ci.yml`? Sekarang `@latest`, dan sejak 2026-08-07 ia salah satu dari dua check **wajib**. Rilis yang menuntut Go 1.26 akan menghentikan seluruh merge tanpa ada commit yang menjelaskan kenapa — persis yang terjadi pada `oasdiff` | 2026-08-07 | Tidak memblokir, sampai ia memblokir semuanya |
 
 
 Pertanyaan branch protection **tertutup pada 2026-08-07**. Repo dijadikan
