@@ -11,7 +11,7 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 
 ## Ringkasan
 
-**28 selesai · 0 sedang · 14 belum**
+**28 selesai · 1 sedang · 13 belum**
 
 Fase 0 punya **29 sub-langkah**: Langkah 9 dan 11 dipecah jadi tujuh PR atas
 permintaan pemilik. Dari 29 itu, **15 selesai dan 14 belum**. Ditambah 10 item
@@ -72,7 +72,7 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | 11b | Migration `00006` notifikasi, waktu, filter, automation | selesai | Rencana Fase 0 §11 | PR F/#16 (`ba87e12`) |
 | 11c | Migration `00007` token, share link, VCS | selesai | Rencana Fase 0 §11 | PR G/#17 (`ee404a7`) |
 | 12 | `sqlc` + view `*_live` untuk soft delete | selesai | Rencana Fase 0 §12 | PR #19 |
-| 13 | `internal/httpx` — request ID, log, recovery, bentuk error, rate limit | belum | Rencana Fase 0 §13 | — |
+| 13 | `internal/httpx` — request ID, log, recovery, bentuk error, rate limit | sedang | Rencana Fase 0 §13 | PR #20, #22 — rate limit belum |
 | 14 | `internal/fracdex` + property test | belum | Rencana Fase 0 §14, ADR-0003 | — |
 | 15 | `modules/identity` — Argon2id, sesi, login/logout/me | belum | Rencana Fase 0 §15, ADR-0005 | — |
 | 16 | Middleware CSRF double-submit | belum | Rencana Fase 0 §16, ADR-0005 | — |
@@ -90,6 +90,11 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 ## Penghalang
 
 **Tidak ada.**
+
+Langkah 13 berstatus `sedang`, bukan terhalang: request ID dan bentuk error
+sudah ter-merge (PR #20), recovery dan log permintaan menyusul (PR #22). Sisanya
+rate limit, yang membutuhkan klien Redis — ditunda ke langkah ini sejak PR #6
+dan dikerjakan sebagai PR tersendiri.
 
 Penghalang sebelumnya — GitHub Actions *degraded availability* pada 2026-08-06
 yang menggagalkan tiga run di langkah `Set up job` — sudah pulih. PR #6, #7,
