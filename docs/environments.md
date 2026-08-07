@@ -13,7 +13,7 @@ Anda sendiri, enam bulan lagi, di mesin yang berbeda.
 | PostgreSQL | 18 | [ADR-0007](adr/0007-postgresql-18.md) |
 | Redis | 7 | |
 | goose | 3.27+ | Migration, maju saja |
-| sqlc | 1.x | Satu entri per modul ([ADR-0008](adr/0008-struktur-modular-backend.md)) |
+| sqlc | 1.31.1 | Satu entri per modul ([ADR-0008](adr/0008-struktur-modular-backend.md)). Versinya dipatok, bukan `1.x`: sqlc versi berbeda menghasilkan berkas berbeda, dan `sqlc diff` di CI membandingkan berkas. Angkanya ada di `.github/workflows/sqlc.yml` |
 | golangci-lint · gitleaks · squawk · lefthook | terbaru | Gerbang otomatis, lihat `references/quality-gates.md` |
 
 ## Daftar lingkungan
