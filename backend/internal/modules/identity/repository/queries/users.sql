@@ -6,14 +6,14 @@
 -- because a view is not what you insert into or soft-delete through.
 
 -- name: GetUserByID :one
-SELECT id, email, name, password_hash, is_owner, created_at, updated_at
+SELECT id, email, name, password_hash, timezone, is_owner, created_at, updated_at
 FROM users_live
 WHERE id = $1;
 
 -- Login. Compared with lower() because addresses are not case sensitive and
 -- users_email_key indexes lower(email) for exactly this lookup.
 -- name: GetUserByEmail :one
-SELECT id, email, name, password_hash, is_owner, created_at, updated_at
+SELECT id, email, name, password_hash, timezone, is_owner, created_at, updated_at
 FROM users_live
 WHERE lower(email) = lower(sqlc.arg(email)::text);
 
@@ -43,4 +43,18 @@ SET deleted_at = now(),
     name = 'Pengguna dihapus',
     updated_at = now()
 WHERE id = sqlc.arg(id)
+  AND deleted_at IS NULL;
+
+-- Rewriting a hash at a cost the application has since raised. A successful
+-- login is the only moment this is possible, because it is the only moment the
+-- password is in memory.
+--
+-- The old hash is matched as well as the id, so two logins racing each other
+-- cannot have one overwrite the other's rehash with a stale value.
+-- name: UpdateUserPasswordHash :execrows
+UPDATE users
+SET password_hash = sqlc.arg(new_hash)::text,
+    updated_at = now()
+WHERE id = sqlc.arg(id)
+  AND password_hash = sqlc.arg(current_hash)::text
   AND deleted_at IS NULL;

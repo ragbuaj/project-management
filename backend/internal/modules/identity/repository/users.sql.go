@@ -56,7 +56,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, name, password_hash, is_owner, created_at, updated_at
+SELECT id, email, name, password_hash, timezone, is_owner, created_at, updated_at
 FROM users_live
 WHERE lower(email) = lower($1::text)
 `
@@ -66,6 +66,7 @@ type GetUserByEmailRow struct {
 	Email        string
 	Name         string
 	PasswordHash string
+	Timezone     string
 	IsOwner      bool
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
@@ -81,6 +82,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 		&i.Email,
 		&i.Name,
 		&i.PasswordHash,
+		&i.Timezone,
 		&i.IsOwner,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -90,7 +92,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 
 const getUserByID = `-- name: GetUserByID :one
 
-SELECT id, email, name, password_hash, is_owner, created_at, updated_at
+SELECT id, email, name, password_hash, timezone, is_owner, created_at, updated_at
 FROM users_live
 WHERE id = $1
 `
@@ -100,6 +102,7 @@ type GetUserByIDRow struct {
 	Email        string
 	Name         string
 	PasswordHash string
+	Timezone     string
 	IsOwner      bool
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
@@ -119,6 +122,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (GetUserByIDRow, e
 		&i.Email,
 		&i.Name,
 		&i.PasswordHash,
+		&i.Timezone,
 		&i.IsOwner,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -182,6 +186,35 @@ WHERE id = $1
 // original for reuse.
 func (q *Queries) SoftDeleteUser(ctx context.Context, id string) (int64, error) {
 	result, err := q.db.Exec(ctx, softDeleteUser, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateUserPasswordHash = `-- name: UpdateUserPasswordHash :execrows
+UPDATE users
+SET password_hash = $1::text,
+    updated_at = now()
+WHERE id = $2
+  AND password_hash = $3::text
+  AND deleted_at IS NULL
+`
+
+type UpdateUserPasswordHashParams struct {
+	NewHash     string
+	ID          string
+	CurrentHash string
+}
+
+// Rewriting a hash at a cost the application has since raised. A successful
+// login is the only moment this is possible, because it is the only moment the
+// password is in memory.
+//
+// The old hash is matched as well as the id, so two logins racing each other
+// cannot have one overwrite the other's rehash with a stale value.
+func (q *Queries) UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateUserPasswordHash, arg.NewHash, arg.ID, arg.CurrentHash)
 	if err != nil {
 		return 0, err
 	}
