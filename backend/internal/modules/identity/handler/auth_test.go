@@ -3,6 +3,7 @@ package handler_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -32,6 +33,7 @@ type store struct {
 	sessions map[string]identityrepo.GetSessionByTokenHashRow
 
 	deleted    [][]byte
+	lookups    int
 	failLogin  error
 	failIssue  error
 	failLogout error
@@ -61,6 +63,8 @@ func newStore(t *testing.T) *store {
 }
 
 func (s *store) GetUserByEmail(_ context.Context, email string) (identityrepo.GetUserByEmailRow, error) {
+	s.lookups++
+
 	if s.failLogin != nil {
 		return identityrepo.GetUserByEmailRow{}, s.failLogin
 	}
@@ -114,7 +118,51 @@ func (s *store) DeleteSessionByTokenHash(_ context.Context, hash []byte) (int64,
 	return 1, nil
 }
 
+// fakeCounter is one rate limit bucket the test can spend or break.
+type fakeCounter struct {
+	refuseFor time.Duration
+	failWith  error
+
+	recorded int
+	reset    int
+}
+
+func (c *fakeCounter) Check(context.Context, string) (bool, time.Duration, error) {
+	if c.failWith != nil {
+		return false, 0, c.failWith
+	}
+
+	if c.refuseFor > 0 {
+		return false, c.refuseFor, nil
+	}
+
+	return true, 0, nil
+}
+
+func (c *fakeCounter) Record(context.Context, string) error {
+	c.recorded++
+
+	return nil
+}
+
+func (c *fakeCounter) Reset(context.Context, string) error {
+	c.reset++
+
+	return nil
+}
+
 func newAuth(t *testing.T, s *store) *identityhttp.Auth {
+	t.Helper()
+
+	auth, _ := newAuthWithCounter(t, s, &fakeCounter{})
+
+	return auth
+}
+
+// newAuthWithCounter builds the handler around one bucket the caller controls.
+// All three buckets share it, so spending it stands in for any of them
+// refusing — which of the three it was is settled in the service tests.
+func newAuthWithCounter(t *testing.T, s *store, counter *fakeCounter) (*identityhttp.Auth, *fakeCounter) {
 	t.Helper()
 
 	log := slog.New(slog.DiscardHandler)
@@ -124,7 +172,11 @@ func newAuth(t *testing.T, s *store) *identityhttp.Auth {
 		t.Fatalf("NewCredentials(): %v", err)
 	}
 
-	return identityhttp.NewAuth(credentials, identitysvc.NewSessions(s, log, time.Now), log)
+	guard := identitysvc.NewLoginGuard(counter, counter, counter, log)
+
+	return identityhttp.NewAuth(
+		credentials, identitysvc.NewSessions(s, log, time.Now), guard, nil, log,
+	), counter
 }
 
 func postLogin(t *testing.T, auth *identityhttp.Auth, body string) *httptest.ResponseRecorder {
@@ -384,3 +436,142 @@ func TestALogoutThatCannotDeleteTheSessionSaysSo(t *testing.T) {
 		t.Errorf("status %d, want 500 — the session is still there", w.Code)
 	}
 }
+
+// A spent bucket has to refuse before the password is looked at. Refusing
+// afterwards would mean every attempt still costs an Argon2id verification,
+// which is the resource the limit exists to protect.
+func TestASpentBucketRefusesBeforeThePasswordIsChecked(t *testing.T) {
+	t.Parallel()
+
+	s := newStore(t)
+	auth, _ := newAuthWithCounter(t, s, &fakeCounter{refuseFor: 90 * time.Second})
+
+	w := postLogin(t, auth, `{"email":"`+testEmail+`","password":"`+testPassword+`"}`)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusTooManyRequests)
+	}
+
+	if got := w.Header().Get("Retry-After"); got != "90" {
+		t.Errorf("Retry-After = %q, want %q", got, "90")
+	}
+
+	if s.lookups != 0 {
+		t.Errorf("the account was looked up %d times; the refusal came too late", s.lookups)
+	}
+
+	// The code is what a client keys on, and the contract lists it for 429.
+	var body struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if body.Error.Code != "RATE_LIMITED" {
+		t.Errorf("code = %q, want RATE_LIMITED", body.Error.Code)
+	}
+}
+
+// docs/nfr.md asks this path to fail closed: a counter that will not answer
+// refuses the login rather than waving it through.
+func TestALoginIsRefusedWhenTheCounterIsUnreachable(t *testing.T) {
+	t.Parallel()
+
+	s := newStore(t)
+	auth, _ := newAuthWithCounter(t, s, &fakeCounter{failWith: errTestCounterDown})
+
+	w := postLogin(t, auth, `{"email":"`+testEmail+`","password":"`+testPassword+`"}`)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Errorf("status = %d, want %d; the login path failed open", w.Code, http.StatusTooManyRequests)
+	}
+
+	if s.lookups != 0 {
+		t.Error("the account was looked up even though the guard could not answer")
+	}
+}
+
+func TestAWrongPasswordIsCounted(t *testing.T) {
+	t.Parallel()
+
+	auth, counter := newAuthWithCounter(t, newStore(t), &fakeCounter{})
+
+	w := postLogin(t, auth, `{"email":"`+testEmail+`","password":"salah sekali"}`)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+
+	// Three buckets share one counter here, so one failure is three writes.
+	if counter.recorded != 3 {
+		t.Errorf("the failure was recorded %d times, want once per bucket (3)", counter.recorded)
+	}
+}
+
+// ADR-0010 clears the counter on success, so four typos and then the right
+// password does not leave somebody one attempt from a lockout.
+func TestASuccessfulLoginClearsTheCountAndAddsNothingToIt(t *testing.T) {
+	t.Parallel()
+
+	auth, counter := newAuthWithCounter(t, newStore(t), &fakeCounter{})
+
+	w := postLogin(t, auth, `{"email":"`+testEmail+`","password":"`+testPassword+`"}`)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	if counter.reset != 1 {
+		t.Errorf("the account bucket was cleared %d times, want 1", counter.reset)
+	}
+
+	if counter.recorded != 0 {
+		t.Errorf("a successful login recorded %d failures, want 0", counter.recorded)
+	}
+}
+
+// A database that will not answer is our outage, not somebody guessing.
+// Counting it would lock people out of an application that is already broken,
+// and they would stay locked out after it was fixed.
+func TestADatabaseOutageIsNotCountedAgainstTheCaller(t *testing.T) {
+	t.Parallel()
+
+	s := newStore(t)
+	s.failLogin = errTestDatabaseDown
+
+	auth, counter := newAuthWithCounter(t, s, &fakeCounter{})
+
+	w := postLogin(t, auth, `{"email":"`+testEmail+`","password":"`+testPassword+`"}`)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+
+	if counter.recorded != 0 {
+		t.Errorf("an outage was counted %d times against the caller, want 0", counter.recorded)
+	}
+}
+
+// Retry-After is whole seconds and rounds up (docs/api/openapi.yaml). Rounding
+// down tells a client to come back a fraction of a second early, and it is
+// refused again for obeying.
+func TestRetryAfterRoundsUpToWholeSeconds(t *testing.T) {
+	t.Parallel()
+
+	auth, _ := newAuthWithCounter(t, newStore(t), &fakeCounter{refuseFor: 1500 * time.Millisecond})
+
+	w := postLogin(t, auth, `{"email":"`+testEmail+`","password":"`+testPassword+`"}`)
+
+	if got := w.Header().Get("Retry-After"); got != "2" {
+		t.Errorf("Retry-After = %q, want %q for a 1.5s wait", got, "2")
+	}
+}
+
+var (
+	errTestCounterDown  = errors.New("redis is down")
+	errTestDatabaseDown = errors.New("postgres is down")
+)
