@@ -5,6 +5,15 @@
 // bugs are invisible — nothing crashes, nothing looks wrong, somebody simply
 // reads what was never theirs — so the check has to live somewhere it can be
 // read in one sitting and tested as a table.
+//
+// Every decision has two halves (ADR-0012), and they are kept apart on
+// purpose:
+//
+//	Scope — is the caller a member of this folder or project?
+//	Right — does the caller's account role permit this action?
+//
+// Both must hold. Can answers the second on its own and needs nothing but
+// memory; the first needs the database and lives in scope.go.
 package authz
 
 import (
@@ -12,21 +21,17 @@ import (
 	"fmt"
 )
 
-// Role is what someone may do inside a project.
+// Role is an account role: what someone may do, wherever they are a member.
 //
-// Three of the six names in docs/authorization.md are deliberately absent:
+// It comes from users.role and nowhere else (ADR-0012). Membership carries no
+// role — a person brings the same one to every folder and project that adds
+// them.
 //
-//   - `guest` is nobody. A request without a live session is refused by
-//     RequireSession before authz is ever consulted, so a Role for it would
-//     only be a value nothing can hold.
-//   - `share` never reaches an ordinary endpoint. It is served by a separate
-//     /api/v1/public/* path that returns already-trimmed data, which is what
-//     stops it from being an ordinary caller with an exception attached.
-//   - `owner` is a property of the account, not a role in a project. Per
-//     docs/authorization.md the installation owner has no privileges over the
-//     contents of a project they are not a member of, so folding it in here
-//     would put a superuser inside the one type that is supposed to say there
-//     is none.
+// Two names from docs/authorization.md are deliberately absent. `guest` is
+// nobody: a request without a live session is refused by RequireSession before
+// authz is consulted. `share` never reaches an ordinary endpoint; it is served
+// by a separate /api/v1/public/* path that returns already-trimmed data, which
+// is what stops it from being an ordinary caller with an exception attached.
 type Role uint8
 
 const (
@@ -34,15 +39,15 @@ const (
 	// denies everything, and code that forgets to set one fails closed.
 	RoleNone Role = iota
 	RoleViewer
-	RoleMember
-	RoleAdmin
+	RoleContributor
+	RoleMaintainer
+	RoleOwner
 )
 
 // The numbers above are the hierarchy, and they are never stored anywhere.
-// PostgreSQL keeps the text ('admin', 'member', 'viewer' — see the CHECK on
-// project_members and folder_members), and ParseRole is the only door between
-// the two. That is what makes it safe to renumber if a role ever has to be
-// slotted in between two others.
+// PostgreSQL keeps the text (see the CHECK on users.role), and ParseRole is
+// the only door between the two. That is what makes it safe to renumber if a
+// role ever has to be slotted in between two others.
 
 // ErrUnknownRole means a role name arrived that this application does not
 // issue. It is an error rather than a silent RoleNone because the two causes
@@ -56,16 +61,18 @@ var ErrUnknownRole = errors.New("unknown role")
 // that mishandles the error still ends up denying rather than allowing. The
 // safe half should not depend on anybody remembering to check.
 //
-// Matching is exact. 'Admin' is not a role this application writes, and
+// Matching is exact. 'Owner' is not a role this application writes, and
 // accepting it would mean accepting whatever else a careless writer put there.
 func ParseRole(name string) (Role, error) {
 	switch name {
 	case "viewer":
 		return RoleViewer, nil
-	case "member":
-		return RoleMember, nil
-	case "admin":
-		return RoleAdmin, nil
+	case "contributor":
+		return RoleContributor, nil
+	case "maintainer":
+		return RoleMaintainer, nil
+	case "owner":
+		return RoleOwner, nil
 	default:
 		return RoleNone, fmt.Errorf("%w: %q", ErrUnknownRole, name)
 	}
@@ -77,10 +84,12 @@ func (r Role) String() string {
 	switch r {
 	case RoleViewer:
 		return "viewer"
-	case RoleMember:
-		return "member"
-	case RoleAdmin:
-		return "admin"
+	case RoleContributor:
+		return "contributor"
+	case RoleMaintainer:
+		return "maintainer"
+	case RoleOwner:
+		return "owner"
 	case RoleNone:
 		return "none"
 	default:
@@ -100,17 +109,13 @@ func (r Role) AtLeast(min Role) bool {
 	return r >= min
 }
 
-// Max is the rule ADR-0011 turns on: an effective role is the higher of the
-// role held on the project and the role held on its folder.
+// Caller is who is asking.
 //
-// The higher, not the more specific. A folder invitation is meant to grant
-// access; if the lower rank won, adding somebody to a folder as a viewer would
-// quietly strip the admin rights they already held on a project inside it —
-// a revocation nobody asked for and no screen would explain.
-func Max(a, b Role) Role {
-	if a > b {
-		return a
-	}
-
-	return b
+// The role travels with the caller rather than being looked up per resource,
+// which is the whole of ADR-0012: it is the same in every folder and project.
+// What changes from one project to the next is only whether the caller is a
+// member of it, and that is scope.go's question.
+type Caller struct {
+	UserID string
+	Role   Role
 }
