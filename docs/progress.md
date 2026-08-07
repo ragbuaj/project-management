@@ -123,9 +123,7 @@ menuntut cgo.
 |---|---|---|
 | Peran default untuk rekan yang diundang: `admin` (saran saya) atau pindahkan sebagian aksi dari `admin` ke `member`? | 2026-08-06 | Fase 2, bukan Fase 0 |
 | Pasang branch protection di `main`? Saat ini **tidak ada sama sekali** — lihat catatan di bawah | 2026-08-07 | Tidak memblokir |
-| Berapa angka rate limit untuk login, reset password, dan pencarian? Mekanismenya sudah ada dan berparameter; angkanya belum ditetapkan di dokumen mana pun | 2026-08-07 | Langkah 18 |
-| Bagaimana IP klien ditentukan di belakang Caddy? Mempercayai `X-Forwarded-For` tanpa syarat berarti siapa pun bisa memalsukannya; tidak mempercayainya berarti seluruh pengguna terhitung sebagai satu IP dan saling menjatuhkan rate limit | 2026-08-07 | Langkah 18 dan 25 |
-| Panjang password minimum dan kebijakan lainnya. Hashing sudah ada dan membatasi panjang **maksimum** 1 KiB; batas minimum adalah keputusan produk, bukan kripto, jadi ia belum ditulis di mana pun | 2026-08-07 | Langkah 15c |
+
 
 Pertanyaan branch protection sudah terjawab sebagiannya, dan jawabannya tidak
 menyenangkan: **`main` tidak punya proteksi apa pun.** Ini ditemukan bukan lewat
@@ -142,6 +140,17 @@ masuk tanpa CI hijau.
 
 Pertanyaan ukuran PR sudah terjawab pada 2026-08-07: Langkah 8–11 dipecah jadi
 tujuh PR, masing-masing di bawah 250 baris yang ditulis tangan.
+
+Tiga pertanyaan terjawab pada 2026-08-07 dan menjadi dua ADR:
+
+| Pertanyaan | Jawaban | Tercatat di |
+|---|---|---|
+| Panjang password minimum dan kebijakannya | 12 karakter, maksimum jauh di atas 64, tanpa aturan komposisi, tanpa rotasi berkala, NFKC sebelum hashing, blocklist HIBP dengan k-anonymity | [ADR-0009](adr/0009-kebijakan-password.md) |
+| Angka rate limit | Ember berlapis dengan backoff, bukan penguncian keras. Tabel angkanya di ADR | [ADR-0010](adr/0010-ip-klien-dan-rate-limit.md) |
+| Cara menentukan IP klien di belakang Caddy | Dihitung dari kanan melewati proxy tepercaya yang jumlahnya tetap; IPv6 diagregasi ke /64; IP tidak pernah jadi kunci tunggal karena CGNAT | [ADR-0010](adr/0010-ip-klien-dan-rate-limit.md) |
+
+Keduanya membawa pekerjaan yang sebelumnya tidak ada di rencana, dan itu
+dicatat di tabel perubahan cakupan di bawah.
 
 ## Di luar cakupan (non-goals)
 
@@ -177,6 +186,9 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-07 | Langkah 15 dipecah jadi tiga (15a password, 15b sesi, 15c endpoint), dan 15b sendiri jadi empat PR (domain, query, penerbitan, pembacaan) | Alasan yang sama dengan Langkah 13 dan 14. Versi utuh 15b sudah ditulis dan berukuran 571 baris sebelum dipecah | ya |
 | 2026-08-07 | Sesi punya ambang penulisan satu jam sebelum tenggat idle digeser — tidak ada di ADR-0005 | Menggeser di setiap permintaan berarti satu `UPDATE` per permintaan untuk seluruh aplikasi. Biayanya: tenggat bisa sampai satu jam lebih awal daripada yang dijanjikan jendela idle | ya — lewat merge PR #34 |
 | 2026-08-07 | `sessions.ip_hash` dibiarkan NULL untuk sekarang | SHA-256 telanjang dari IPv4 hanya empat miliar preimage, jadi butuh digest berkunci dan secret-nya; sementara cara menentukan IP klien di belakang Caddy masih pertanyaan terbuka | ya |
+| 2026-08-07 | Rate limiter diganti dari fixed window ke sliding window, dan penghitungnya jadi berlapis (akun, IP, prefiks IP) | [ADR-0010](adr/0010-ip-klien-dan-rate-limit.md). Fixed window bisa dilewati dua kali limit di perbatasan jendela. Pekerjaan tambahan di Langkah 18 yang sebelumnya tidak ada di rencana | ya |
+| 2026-08-07 | Blocklist password bocor lewat HIBP dengan k-anonymity ditambahkan ke jalur pendaftaran dan penggantian password | [ADR-0009](adr/0009-kebijakan-password.md). Dependensi eksternal baru di jalur permintaan pengguna; wajib bertimeout dan **gagal terbuka** | ya |
+| 2026-08-07 | Normalisasi NFKC sebelum hashing dan sebelum verifikasi password | [ADR-0009](adr/0009-kebijakan-password.md). Tanpa itu password yang sama dari papan ketik berbeda gagal login. Konsekuensinya: normalisasi tidak bisa diubah lagi setelah ada hash tersimpan | ya |
 | 2026-08-07 | `golang.org/x/crypto` jadi dependency runtime langsung | Argon2id diwajibkan ADR-0005 dan `rules/40-security.md`, dan pustaka standar Go tidak punya implementasinya. Turunannya `golang.org/x/sys` sudah ada di `go.sum`. `govulncheck` bersih | ya — ditanyakan dan disetujui pemilik pada 2026-08-07 |
 
 ## Cara memperbarui berkas ini

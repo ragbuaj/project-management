@@ -15,7 +15,7 @@ Dokumen 1–7 harus selesai dan disetujui sebelum implementasi dimulai.
 | 1 | [product-brief.md](product-brief.md) | Masalah, pengguna, ruang lingkup, **non-goals** | ✅ disetujui |
 | 2 | [glossary.md](glossary.md) | Istilah domain yang disepakati | ✅ disetujui |
 | 3 | [architecture.md](architecture.md) | C4 level 1–2, struktur paket, alasan pemilihan | ✅ disetujui |
-| 4 | [adr/](adr/) | Keputusan yang sulit dibalik | ✅ ADR-0001…0006 Accepted |
+| 4 | [adr/](adr/) | Keputusan yang sulit dibalik | ✅ ADR-0001…0010 Accepted, kecuali 0007 Proposed |
 | 5 | [data-model.md](data-model.md) | ERD, DDL, indeks, retensi, penandaan data pribadi | ✅ disetujui |
 | 6 | [api/openapi.yaml](api/openapi.yaml) | Kontrak API — sumber kebenaran | ✅ disetujui |
 | 7 | [authorization.md](authorization.md) | Peran × sumber daya × aksi | ✅ disetujui |
