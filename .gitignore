@@ -37,3 +37,12 @@ coverage.html
 *.swp
 .DS_Store
 Thumbs.db
+
+# Log sesi kerja. Ditulis di docs/sessions/ dan sengaja tidak ikut ter-commit:
+# isinya catatan proses — apa yang dicoba, apa yang salah, apa yang ditunggu —
+# yang berguna untuk melanjutkan pekerjaan, bukan untuk dibaca pengunjung repo.
+#
+# Konsekuensinya disadari: klon baru tidak membawa riwayat sesi, jadi
+# docs/progress.md adalah satu-satunya sumber yang ikut repo. Log sesi yang
+# perlu dibagikan disalin ke vault, bukan dilepas dari daftar ini.
+docs/sessions/
