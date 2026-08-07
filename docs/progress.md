@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `0500277`.
+**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `0515217`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -47,12 +47,20 @@ Yang tersisa di Langkah 18 adalah potongan f sampai h — undangan, reset
 password, dan blocklist HIBP — dan ketiganya sekarang punya pengirim surel yang
 mereka butuhkan.
 
-**`internal/mail` ada tapi belum dipanggil siapa pun,** dan itu disengaja:
-`SMTP_*` belum dibaca `internal/config` dan tidak ada pengirim yang dirakit di
-`cmd/api`. Keduanya menyusul bersama konsumen pertamanya di potongan f. Merakit
-pengirim sekarang berarti kode mati, dan mewajibkan `SMTP_*` sebelum ada yang
-membacanya adalah persis yang dilarang [environments.md](environments.md) dan
-komentar di kepala `internal/config`.
+**Potongan f sudah melewati tiga dari lima PR-nya:** token undangan (#82),
+empat query beserta cap sekali pakainya (#83), dan `Invitations.Create` yang
+mengundang lalu mengirim tautannya (#84). Yang tersisa: penukaran tautan
+(membuat akunnya), lalu endpoint, kontrak, `SMTP_*`, dan perakitan.
+
+**`internal/mail` sudah punya pemanggil pertamanya sejak #84** —
+`identitysvc.Invitations` — tapi rantai itu belum tersambung ke proses yang
+berjalan, dan itu disengaja:
+`SMTP_*` belum dibaca `internal/config`, tidak ada pengirim yang dirakit di
+`cmd/api`, dan `identitysvc.InTx` belum punya implementasi sungguhan. Ketiganya
+menyusul di PR terakhir potongan f, saat endpoint-nya ada — merakit pengirim
+sebelum ada yang memanggilnya lewat HTTP berarti kode mati, dan mewajibkan
+`SMTP_*` sebelum ada yang membacanya adalah persis yang dilarang
+[environments.md](environments.md) dan komentar di kepala `internal/config`.
 
 **Yang belum punya implementasi:** antarmuka `authz.Memberships` sengaja tanpa
 implementasi sampai modul project lahir di Fase 1 — `project_members` dan
@@ -168,6 +176,18 @@ selesai lalu diam-diam menggantinya adalah cara catatan ini berbohong.
 > berturut-turut. Tiga PR ter-merge (#78, #79, #80) dan ketiganya menutup
 > potongan e di dalam Langkah 18.
 >
+> Rekonsiliasi kedelapan belas (2026-08-08, `0515217`): **38 · 1 · 8** untuk
+> **kelima** kalinya berturut-turut. Tiga PR ter-merge (#82, #83, #84) dan
+> ketiganya di dalam potongan f, yang belum tuntas — tabel potongan karena itu
+> memakai status `sedang` untuk pertama kalinya, dengan PR mana yang sudah masuk
+> dan apa yang tersisa ditulis di kolom yang sama.
+>
+> Lima rekonsiliasi tanpa satu angka bergerak sementara sepuluh PR ter-merge
+> adalah bukti paling jelas sejauh ini bahwa **satu baris tabel Fase 0 bukan
+> satuan yang bisa mengukur Langkah 18.** Tabel potongan yang menanggungnya, dan
+> ia sendiri sekarang mulai terlalu kasar: potongan f butuh lima PR, dan itu
+> dicatat di dalam selnya, bukan dengan memecah barisnya lagi.
+>
 > Paragraf di atas tabel diperbarui di rekonsiliasi ini — bukan angkanya, yang
 > masih benar, melainkan kalimat `empat dari delapan potongan` yang menjadi
 > salah begitu potongan e masuk. Ini kelas kesalahan yang sama dengan yang
@@ -225,7 +245,7 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | — | Migration `00009` & `00010` — peran akun, dan pembuangan `is_owner` | selesai | Perubahan cakupan, lihat bawah; [ADR-0012](adr/0012-peran-akun-dan-akses-owner.md) | PR #59, #60, #63 (`98c5b4d`) |
 | — | Modul identity membawa peran akun, bukan `is_owner` | selesai | ADR-0012 | PR #61 |
 | 17 | `internal/authz` + table-driven test **tujuh** pola | selesai | Rencana Fase 0 §17, [authorization.md](authorization.md), ADR-0012 | PR #53, #54, #55, lalu **ditulis ulang** di #62 (`94d2303`) |
-| 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | sedang | Rencana Fase 0 §18, ADR-0009, ADR-0010 | 5 dari 8 potongan — a: #65 · b: #67, #68 · c: #69, #71, #72, #73 · d: #75, #76 · e: #78, #79, #80 |
+| 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | sedang | Rencana Fase 0 §18, ADR-0009, ADR-0010 | 5 dari 8 potongan selesai, f sedang berjalan — a: #65 · b: #67, #68 · c: #69, #71, #72, #73 · d: #75, #76 · e: #78, #79, #80 · f (sebagian): #82, #83, #84 |
 | 19 | **Gerbang manusia:** arah desain tertulis | belum | Rencana Fase 0 §19, `rules/15-ui-design.md` §2 | — |
 | 20 | Scaffold Vite + shadcn + token | belum | Rencana Fase 0 §20 | — |
 | 21 | Generate tipe dari OpenAPI + layar login empat state | belum | Rencana Fase 0 §21 | — |
@@ -303,6 +323,13 @@ yang **mengubah cara kerja**, bukan sejarah.
   `__Host-csrf`, lalu salin nilainya ke header `X-CSRF-Token`. Permintaan yang
   lupa itu dijawab `403`, bukan `401`, dan mudah tersalahartikan sebagai
   masalah sesi.
+- **Setiap perintah test dijalankan di shell baru, jadi `TEST_DATABASE_URL`
+  harus disetel di perintah yang sama.** Menyetelnya di satu perintah lalu
+  menjalankan `go test` di perintah berikutnya menghasilkan seluruh paket
+  repository **skip diam-diam** sambil melaporkan `ok`. Terjadi di sesi ini, dan
+  hanya ketahuan karena hasilnya diperiksa ulang dengan `-v`. Untuk paket yang
+  bisa skip, `-v` bukan kemewahan: ia satu-satunya beda antara `ok` yang berarti
+  lulus dan `ok` yang berarti tidak dijalankan.
 - **`gh pr merge --auto --delete-branch` tidak menghapus branch-nya.** Ketiga PR
   sesi ini di-arm dengan flag itu, ketiganya ter-merge, dan ketiga branch masih
   hidup di `origin` sesudahnya. Pada jalur auto-merge flag itu tidak berlaku;
@@ -329,12 +356,31 @@ menutup lubang rate limit lebih dulu.
 | c | `/auth/login` berbatas: ember akun + IP + prefiks, gagal tertutup | selesai — #69 primitif, #71 kunci jaringan, #72 kebijakan, #73 pemasangan |
 | d | Daftar & cabut sesi + kontrak | selesai — #75 query & kebijakan, #76 endpoint & kontrak |
 | e | `internal/mail` — pengirim SMTP, dan penangkap untuk test | selesai — #78 render, #79 penangkap, #80 SMTP |
-| f | Undangan: owner membuat akun pegawai | belum |
+| f | Undangan: owner membuat akun pegawai | sedang — 3 dari 5 PR: #82 token, #83 query, #84 pembuatan & pengiriman. Sisa: penukaran tautan, lalu endpoint + kontrak + `SMTP_*` + perakitan |
 | g | Reset password | belum |
 | h | Blocklist HIBP dengan k-anonymity, bertimeout, gagal terbuka | belum |
 
 Yang perlu diingat saat melanjutkan:
 
+- **Undangan mengirim surelnya *setelah* transaksi commit, bukan di dalamnya.**
+  Menahan transaksi selama satu perjalanan SMTP adalah kunci pada tabel
+  `invitations` yang digantungkan pada pihak ketiga sampai 20 detik. Ongkos yang
+  diterima: baris yang tertulis tapi tak terkirim. Ia mati — tokennya tidak
+  pernah disimpan — dan percobaan ulang menggantikannya. Endpoint berikutnya
+  yang mengirim surel (reset password, potongan g) harus memilih urutan yang
+  sama secara sadar.
+- **`invitations.role` sudah memakai kosakata ADR-0012 sejak `00009`**
+  (`maintainer`, `contributor`, `viewer` — `owner` sengaja absen). Tidak perlu
+  migration untuk undangan; ini sempat terlihat perlu karena `00001` masih
+  menuliskan `admin/member/viewer` dan yang membatalkannya ada di `00009`.
+- **Menguji atomisitas menuntut koneksi yang berbeda, bukan hanya goroutine.**
+  `TestConcurrentRedemptionsLetExactlyOneThrough` satu-satunya test di repo ini
+  yang **commit** — dua transaksi tidak bisa balapan di dalam satu transaksi —
+  dan ia membersihkan barisnya sendiri di `t.Cleanup`. Dijalankan berurutan,
+  klaim sekali-pakai itu lolos walau penjaganya dibuang.
+- **`identitysvc.InTx` adalah fungsi, bukan handle pgx.** Batas transaksi tetap
+  milik service, tapi pgx tidak ikut masuk ke sana — itu yang membuat service-nya
+  bisa diuji dengan fake biasa. Implementasinya (yang membuka pool) belum ada.
 - **Undangan hanya untuk membuat akun baru.** Menambahkan orang yang sudah
   punya akun ke folder atau project berlaku **langsung tanpa persetujuan**
   (keputusan pemilik, 2026-08-08). `invitations.role` berisi peran **akun**.
@@ -396,6 +442,7 @@ menuntut cgo.
 |---|---|---|
 | Penyedia SMTP untuk produksi. `SMTP_HOST` dan kawan-kawan sudah wajib di [environments.md](environments.md), tapi layanannya belum dipilih | 2026-08-08 | Langkah 25 (deploy), bukan Langkah 18 — Mailpit menutup seluruh pengembangan lokal |
 | Angka ember jaringan: 300 / 10 menit dan 2000 / hari. [ADR-0010](adr/0010-ip-klien-dan-rate-limit.md) tidak punya barisnya, jadi keduanya dipilih sendiri saat menulis `DefaultLoginLimits` | 2026-08-08 | Tidak memblokir apa pun — ia sudah berjalan dengan angka itu. Yang perlu diketahui: angka ini yang pertama dicurigai kalau ada yang terkunci tanpa sebab, dan mengubahnya cuma menyunting satu konstanta |
+| Jendela undangan tujuh hari. [ADR-0005](adr/0005-autentikasi-sesi-cookie.md) menetapkan jendela sesi dan diam soal undangan, jadi angkanya dipilih sendiri saat menulis `identitydom.InvitationWindow` | 2026-08-08 | Tidak memblokir apa pun — ia sudah berjalan dengan angka itu. Yang perlu diketahui: ia yang pertama dicurigai kalau ada pegawai yang harus minta undangan kedua, dan mengubahnya cuma menyunting satu konstanta |
 | Apakah `SMTP_USERNAME` dan `SMTP_PASSWORD` tetap **wajib** seperti tertulis di [environments.md](environments.md). Mailpit lokal tidak menerima keduanya, jadi mewajibkannya di `local` hanya melahirkan isian asal-asalan — yang justru dilarang dokumen yang sama. Bentuk yang tampaknya benar: wajib saat `APP_ENV=production`, opsional di `local`, sejalan dengan cara `APP_BASE_URL` sudah diperketat di produksi | 2026-08-08 | Potongan f, saat `internal/config` mulai membacanya. Tidak memblokir potongan e — `mail.NewSMTP` menerima opsinya sebagai argumen dan tidak menyentuh environment |
 
 
@@ -506,6 +553,10 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-07 | Cookie CSRF diterbitkan middleware pada permintaan aman mana pun, bukan oleh handler login seperti tersirat di kontrak | Kalau penerbitannya milik satu endpoint, endpoint yang mengubah data bergantung pada endpoint lain yang ingat menerbitkannya — lubang yang sama dengan "lupa memasang middleware", dari sisi sebaliknya. Akibat baiknya `POST /auth/login` ikut terlindungi dari login lintas-situs | ya — lewat merge PR #47 |
 | 2026-08-07 | Rantai middleware diangkat dari `run()` menjadi `apiHandler()` di `cmd/api` | ADR-0005 menaruh pemeriksaan CSRF di router justru supaya tidak ada route yang bisa ditambahkan tanpanya. Rantai yang hanya dirakit di dalam `run()` tidak bisa ditanyai apakah itu masih benar; sekarang ada dua test yang menanyakannya | ya — lewat merge PR #47 |
 | 2026-08-08 | **`DELETE /me/sessions` menyisakan sesi yang sedang dipakai** | Terbaca mengejutkan dari URL-nya, jadi alasannya ditulis di kontrak dan bukan hanya di kode: `POST /auth/logout` sudah mengakhiri sesi yang sedang dipakai, jadi pemanggil yang ingin keluar dari mana-mana termasuk dari sini memanggil keduanya. Satu endpoint yang mengeluarkan pemanggilnya sambil masih berutang jawaban adalah setengah yang lebih buruk dari pasangan itu | ya — lewat merge PR #76, yang deskripsinya menjelaskan pilihan ini |
+| 2026-08-08 | **Pencetakan token diangkat jadi milik bersama sesi dan undangan** (`identity/domain/token.go`) | Keduanya nyaris menjadi sepuluh baris kode keamanan yang sama di dua berkas, dan lebar 32 byte yang mereka sepakati adalah yang diharapkan `CHECK octet_length` di setiap kolom `token_hash`. Penyimpangan kecil dari disiplin ruang lingkup — ia menyentuh `session.go` — dengan alasan duplikasi kode keamanan adalah bug yang belum meledak. Seluruh test sesi lulus tanpa disunting, dan dua mutasi pada berkas bersama itu membunuh test di kedua sisi | ya — lewat merge PR #82 |
+| 2026-08-08 | **Jendela undangan tujuh hari dipilih di luar ADR** | [ADR-0005](adr/0005-autentikasi-sesi-cookie.md) menetapkan jendela sesi dan diam soal undangan. Cukup panjang untuk bertahan melewati undangan Jumat sore atau seminggu cuti, cukup pendek supaya tautan yang terlanjur diteruskan ke grup obrolan berhenti bekerja. **Ditandai di kodenya** sebagai angka yang belum disepakati | belum — dipilih sendiri, menunggu jawaban pemilik |
+| 2026-08-08 | **Undang ulang menutup tautan yang sudah terkirim** (`ExpireOpenInvitationsForEmail`) | Alternatifnya dua tautan hidup untuk satu alamat, dan alamat yang tidak sengaja diundang dua kali menyisakan pembuat akun cadangan di surel lama. Tidak ada di rencana Fase 0 §18; muncul saat memutuskan apa arti mengundang orang yang sama dua kali | ya — lewat merge PR #83 |
+| 2026-08-08 | Potongan f dipecah jadi **lima** PR (#82 token, #83 query, #84 pembuatan, lalu penukaran, lalu endpoint & perakitan) | Diputuskan sebelum baris pertamanya, kali ini benar-benar sebelum. Utuh, potongan ini jauh di atas 400 baris; masing-masing PR di atas berkisar 340–580 dengan mayoritas test | ya |
 | 2026-08-08 | Potongan e dipecah jadi tiga PR (#78 render, #79 penangkap, #80 SMTP) | Utuh, ia 1.427 baris. Pemecahannya diputuskan setelah render dan penangkap ditulis, bukan sebelumnya — pelanggaran aturan "potong sebelum menulis" yang tidak berbiaya kali ini hanya karena ketiga berkas test-nya sudah berdiri sendiri. #78 tetap 561 baris dan #80 tetap 626, keduanya di atas target 400; memecahnya lebih jauh menyisakan validator atau separuh percakapan SMTP yang tidak dipanggil siapa pun | ya |
 | 2026-08-08 | **`internal/mail` mendarat tanpa satu pun pemanggil**, dan `SMTP_*` sengaja belum dibaca `internal/config` | Merakit pengirim di `cmd/api` sebelum ada yang mengirim adalah kode mati (`rules/00-core.md` §8), dan mewajibkan variabel environment yang tidak dibaca siapa pun adalah yang dilarang [environments.md](environments.md) dan komentar di kepala `internal/config`. Pola yang sama dengan `authz.Memberships` dan `httpx.Limiter`. Konsumen pertamanya potongan f | ya |
 | 2026-08-08 | Baris `internal/mail/` ditambahkan ke pohon paket di [architecture.md](architecture.md) | Preseden `internal/redis` pada 2026-08-07: pohon itu peta yang dibaca orang sebelum memutuskan di mana kode baru ditaruh, dan paket yang hilang darinya mengundang paket kedua di sebelahnya | ya — lewat merge PR #80 |
