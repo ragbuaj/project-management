@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,17 +14,27 @@ import (
 	"github.com/ragbuaj/project-management/backend/internal/postgres"
 )
 
+var (
+	migrateOnce sync.Once
+	migrateErr  error
+)
+
 // migrated applies every migration and hands back a pool.
 //
-// goose keeps its dialect and base filesystem in package-level state, so the
-// tests that touch it do not run in parallel with each other.
+// The schema is migrated once per test binary rather than once per test: goose
+// keeps its dialect and base filesystem in package-level state, and repeating
+// the work only fills the output with "no migrations to run".
 func migrated(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
 	url := testDatabaseURL(t)
 
-	if err := postgres.Migrate(t.Context(), url); err != nil {
-		t.Fatalf("Migrate(): %v", err)
+	migrateOnce.Do(func() {
+		migrateErr = postgres.Migrate(context.Background(), url)
+	})
+
+	if migrateErr != nil {
+		t.Fatalf("Migrate(): %v", migrateErr)
 	}
 
 	pool, err := postgres.New(t.Context(), url, 5)
