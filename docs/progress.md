@@ -126,21 +126,32 @@ menuntut cgo.
 | Pertanyaan | Sejak | Memblokir |
 |---|---|---|
 | Peran default untuk rekan yang diundang: `admin` (saran saya) atau pindahkan sebagian aksi dari `admin` ke `member`? | 2026-08-06 | Fase 2, bukan Fase 0 |
-| Pasang branch protection di `main`? Saat ini **tidak ada sama sekali** — lihat catatan di bawah | 2026-08-07 | Tidak memblokir |
 
 
-Pertanyaan branch protection sudah terjawab sebagiannya, dan jawabannya tidak
-menyenangkan: **`main` tidak punya proteksi apa pun.** Ini ditemukan bukan lewat
-pemeriksaan pengaturan, melainkan lewat akibatnya — `gh pr merge --auto` pada
-PR #13 langsung mengeksekusi merge, karena auto-merge hanya menunggu *required
-check* dan tidak ada satu pun yang wajib. PR #13 karena itu ter-merge sebelum
-CI-nya selesai. CI-nya kemudian hijau, tapi itu keberuntungan, bukan gerbang.
+Pertanyaan branch protection **tertutup pada 2026-08-07**. Repo dijadikan
+publik — proteksi digerbang plan dan gratis hanya untuk repo publik — lalu
+proteksinya dipasang:
 
-PR #14 sampai #17 menunggu CI selesai lebih dulu, baru di-merge.
+| Setelan | Nilai |
+|---|---|
+| Approval wajib | 0 — proyek satu orang; GitHub tidak mengizinkan approve PR sendiri, dan mensyaratkan satu approval berarti mengunci diri sendiri |
+| Check wajib | `Go — vet, lint, test` dan `Pemindai secret` |
+| Branch harus mutakhir sebelum merge | ya |
+| Berlaku untuk admin | ya |
+| Force push dan hapus branch | ditolak |
 
-Yang perlu diputuskan pemilik: apakah `main` diberi *required status check*
-untuk tiga job CI. Kalau ya, `--auto` menjadi aman dan tidak ada PR yang bisa
-masuk tanpa CI hijau.
+**Hanya dua check yang wajib, dan itu disengaja.** `oasdiff`, `sqlc`, dan
+`migrations` disaring per-path: ketiganya tidak melapor di PR yang tidak
+menyentuh path-nya, jadi menjadikannya wajib akan menggantungkan setiap PR
+dokumen selamanya di status *Expected*.
+
+Riwayatnya, supaya tidak terulang: sebelum ini `main` tidak punya proteksi apa
+pun. Itu ditemukan lewat akibatnya, bukan lewat pemeriksaan pengaturan —
+`gh pr merge --auto` pada PR #13 langsung mengeksekusi merge, karena auto-merge
+hanya menunggu *required check* dan tidak ada satu pun yang wajib. PR #13
+ter-merge sebelum CI-nya selesai; CI-nya kemudian hijau, tapi itu keberuntungan.
+Sejak PR #14 urutannya jadi `gh pr checks --watch` dulu, baru merge. Sekarang
+urutan itu ditegakkan server, bukan ingatan.
 
 Pertanyaan ukuran PR sudah terjawab pada 2026-08-07: Langkah 8–11 dipecah jadi
 tujuh PR, masing-masing di bawah 250 baris yang ditulis tangan.
@@ -192,6 +203,7 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-07 | `sessions.ip_hash` dibiarkan NULL untuk sekarang | SHA-256 telanjang dari IPv4 hanya empat miliar preimage, jadi butuh digest berkunci dan secret-nya; sementara cara menentukan IP klien di belakang Caddy masih pertanyaan terbuka | ya |
 | 2026-08-07 | Rate limiter diganti dari fixed window ke sliding window, dan penghitungnya jadi berlapis (akun, IP, prefiks IP) | [ADR-0010](adr/0010-ip-klien-dan-rate-limit.md). Fixed window bisa dilewati dua kali limit di perbatasan jendela. Pekerjaan tambahan di Langkah 18 yang sebelumnya tidak ada di rencana | ya |
 | 2026-08-07 | Blocklist password bocor lewat HIBP dengan k-anonymity ditambahkan ke jalur pendaftaran dan penggantian password | [ADR-0009](adr/0009-kebijakan-password.md). Dependensi eksternal baru di jalur permintaan pengguna; wajib bertimeout dan **gagal terbuka** | ya |
+| 2026-08-07 | Branch protection dipasang di `main`: 0 approval, dua check wajib, berlaku untuk admin | Menutup pertanyaan yang terbuka sejak 2026-08-07. Approval 0 karena proyek satu orang; yang ditegakkan adalah "lewat PR dan lewat CI hijau", bukan adanya orang kedua | ya — keputusan pemilik |
 | 2026-08-07 | Repo dijadikan publik | Branch protection, ruleset, *secret scanning*, dan *push protection* semuanya digerbang plan: gratis hanya untuk repo publik. Push protection adalah kontrol yang sebelumnya tidak ada — ia menolak secret sebelum commit-nya mendarat, sedangkan `gitleaks` di CI baru berteriak setelah ter-push | ya — keputusan pemilik pada 2026-08-07 |
 | 2026-08-07 | Log sesi (`docs/sessions/`) dilepas dari repo dan masuk `.gitignore` | Permintaan pemilik, menyusul repo jadi publik. Isinya catatan proses, bukan dokumentasi proyek. Konsekuensinya: klon baru tidak membawa riwayat sesi, jadi `progress.md` menjadi satu-satunya pembawa konteks antar-sesi yang ikut repo | ya |
 | 2026-08-07 | `oasdiff` dipin ke v1.28.0 dan dipasang dengan `GOTOOLCHAIN=auto` | Gerbang kontrak berhenti bisa memasang alatnya: `@latest` menuntut Go 1.26. Sekaligus menghapus `@latest` — gerbang yang alatnya tidak dipin bisa berubah perilakunya tanpa satu pun commit di repo ini | ya — ditanyakan dan disetujui pemilik pada 2026-08-07 |
