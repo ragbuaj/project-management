@@ -15,14 +15,14 @@ SET statement_timeout = '5min';
 -- and dropping it in the same migration would leave every query in main broken
 -- until the module catches up. It goes in 00010, after the code has moved.
 
--- 'member' as the default is the safe end of the range: an account created by
+-- 'contributor' as the default is the safe end of the range: an account created by
 -- something that has not been taught about roles yet can neither create
 -- workspaces nor see anything it was not added to.
-ALTER TABLE users ADD COLUMN role text NOT NULL DEFAULT 'member';
+ALTER TABLE users ADD COLUMN role text NOT NULL DEFAULT 'contributor';
 
 ALTER TABLE users
     ADD CONSTRAINT users_role_known
-    CHECK (role IN ('owner', 'project_manager', 'member', 'viewer')) NOT VALID;
+    CHECK (role IN ('owner', 'maintainer', 'contributor', 'viewer')) NOT VALID;
 
 ALTER TABLE users VALIDATE CONSTRAINT users_role_known;
 
@@ -104,6 +104,6 @@ ALTER TABLE invitations DROP CONSTRAINT invitations_role_check;
 
 ALTER TABLE invitations
     ADD CONSTRAINT invitations_role_known
-    CHECK (role IN ('project_manager', 'member', 'viewer')) NOT VALID;
+    CHECK (role IN ('maintainer', 'contributor', 'viewer')) NOT VALID;
 
 ALTER TABLE invitations VALIDATE CONSTRAINT invitations_role_known;

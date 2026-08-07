@@ -24,7 +24,7 @@ Diurutkan menurut kerugian kalau bocor atau rusak.
 |---|---|---|
 | Pemindai otomatis di internet | Tinggi frekuensi, rendah kecanggihan | Mencari CVE, panel admin, kredensial default |
 | Orang yang menemukan share link | Punya URL yang sah | Rasa ingin tahu, atau tautan diteruskan ke pihak ketiga |
-| Rekan yang diundang (`viewer`/`member`) | Terautentikasi, tahu bentuk API | Melihat project lain, membaca jam kerja orang lain, mengubah tulisan orang lain |
+| Rekan yang diundang (`viewer`/`contributor`) | Terautentikasi, tahu bentuk API | Melihat project lain, membaca jam kerja orang lain, mengubah tulisan orang lain |
 | Mantan rekan yang aksesnya dicabut | Pernah tahu ID dan struktur | Akses lanjutan lewat sesi atau token yang tidak dicabut |
 | Penyerang XSS lewat isi kartu | Bisa menulis Markdown | Mencuri sesi, bertindak atas nama korban |
 | Penyerang webhook | Bisa mengirim POST ke endpoint publik | Memalsukan event, memicu automation |
@@ -126,8 +126,8 @@ Tiga batas yang paling rawan, berurutan menurut risiko: `member → api`
 
 | Ancaman | Mitigasi | Fase |
 |---|---|---|
-| `member` menaikkan dirinya jadi `admin` | Ubah peran hanya `admin`/`owner`, dan **tidak boleh mengubah peran diri sendiri** | 2 |
-| `admin` terakhir diturunkan sehingga project terkunci | Ditolak — harus selalu ada minimal satu `admin` | 2 |
+| Pegawai menaikkan peran akunnya sendiri | Peran ada di akun dan **hanya `owner` yang boleh mengubahnya** ([ADR-0012](adr/0012-peran-akun-dan-akses-owner.md)). Tidak ada endpoint yang membiarkan siapa pun menyentuh perannya sendiri | 2 |
+| Project terkunci karena tidak ada lagi yang bisa mengaturnya | Tidak mungkin sejak ADR-0012: `owner` mengakses setiap project tanpa perlu jadi anggota, dan aksesnya tercatat | 2 |
 | API token dibuat dengan scope melebihi hak penggunanya | Scope divalidasi terhadap peran nyata saat pembuatan **dan** saat pemakaian | 9 |
 | XSS lewat deskripsi kartu → mencuri sesi | Markdown di-render tanpa `dangerouslySetInnerHTML` pada konten pengguna; HTML mentah tidak diizinkan. Sesi di cookie `HttpOnly` sehingga XSS tidak langsung berarti pencurian token | 1 |
 | CSRF dari situs lain | `SameSite=Lax` + double-submit token, ditegakkan di level router | 0 |

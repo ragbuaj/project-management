@@ -35,8 +35,8 @@ perannya sudah ditetapkan sebelum ia menyentuh aplikasi ini.
 | Peran akun | Boleh membuat folder & project | Di dalam yang ia jadi anggotanya |
 |---|---|---|
 | `owner` | ya | segalanya, **dan tidak perlu jadi anggota** |
-| `project_manager` | ya | mengatur bentuknya: status, board, sprint, anggota |
-| `member` | tidak | mengubah pekerjaan: kartu, komentar, catatan waktu |
+| `maintainer` | ya | mengatur bentuknya: status, board, sprint, anggota |
+| `contributor` | tidak | mengubah pekerjaan: kartu, komentar, catatan waktu |
 | `viewer` | tidak | membaca saja — tidak berkomentar, tidak mencatat waktu |
 
 Satu owner per instalasi, ditegakkan indeks unik parsial — aturan yang sudah
@@ -91,14 +91,14 @@ suatu hari ia perlu tahu apa yang pernah ia lihat.
 ## Yang hilang, dan diterima
 
 **Tidak ada cara mengundang seseorang sebagai pembantu biasa.** Seorang
-`project_manager` yang diundang ke project orang lain adalah manajer penuh di
+`maintainer` yang diundang ke project orang lain adalah manajer penuh di
 sana: ia bisa mengubah status, menutup sprint, dan mengeluarkan anggota lain —
 termasuk yang mengundangnya.
 
 Ini ditanyakan eksplisit dan diterima pemilik pada 2026-08-08. Alasannya bisa
 diterima: di satu perusahaan, jabatan seseorang tidak berubah karena ia pindah
 project, dan orang yang tidak dipercaya memegang kendali sebuah project
-seharusnya tidak berperan `project_manager` sejak awal.
+seharusnya tidak berperan `maintainer` sejak awal.
 
 Kalau suatu saat ternyata perlu, jalan kembalinya adalah satu kolom `role` di
 `project_members` yang **menurunkan** peran akun untuk project itu — tidak
@@ -109,10 +109,10 @@ dipunyai akunnya, dan itu membuat peran akun berhenti berarti apa pun.
 
 **Peran di keanggotaan, seperti rancangan sebelumnya.** Ditolak pemilik: ia
 menduplikasi jabatan pegawai ke setiap baris keanggotaan, dan membuat kata
-`member` punya dua arti — tingkat pegawai dan peran di dalam project.
+`contributor` punya dua arti — tingkat pegawai dan peran di dalam project.
 
 **`users.may_create_workspaces` sebagai kemampuan, bukan peran.** Menghindari
-tabrakan kata sepenuhnya, tapi tidak cukup untuk membedakan `member` dari
+tabrakan kata sepenuhnya, tapi tidak cukup untuk membedakan `contributor` dari
 `viewer`, yang bedanya bukan soal membuat melainkan soal menulis.
 
 ## Konsekuensi
@@ -125,7 +125,7 @@ tabrakan kata sepenuhnya, tapi tidak cukup untuk membedakan `member` dari
 - Mengundang ke project adalah satu baris tanpa keputusan tambahan — sejalan
   dengan keputusan 2026-08-08 bahwa penambahan anggota berlaku langsung tanpa
   persetujuan.
-- Kata `member` kembali punya satu arti.
+- Kata `contributor` kembali punya satu arti.
 
 ### Yang menjadi lebih sulit
 
@@ -144,6 +144,6 @@ tabrakan kata sepenuhnya, tapi tidak cukup untuk membedakan `member` dari
 
 - **Berapa sering owner mengakses di luar keanggotaannya.** Kalau sering, itu
   tanda ia sebenarnya perlu menjadi anggota.
-- Jumlah akun `project_manager`. Setiap satu adalah orang yang bisa membuat
+- Jumlah akun `maintainer`. Setiap satu adalah orang yang bisa membuat
   ruang kerja yang tidak terlihat siapa pun sampai ia mengundang orang — dan
   yang menjadi manajer penuh di setiap project yang mengundangnya.

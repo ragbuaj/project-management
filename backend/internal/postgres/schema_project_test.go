@@ -210,7 +210,7 @@ func TestInvitationsPointAtRealProjects(t *testing.T) {
 
 	const insert = `
 		INSERT INTO invitations (email, token_hash, invited_by, project_id, role, expires_at)
-		VALUES ($1, $2, $3, $4, 'member', now() + interval '7 days')`
+		VALUES ($1, $2, $3, $4, 'contributor', now() + interval '7 days')`
 
 	token := make([]byte, 32)
 
