@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	identitydom "github.com/ragbuaj/project-management/backend/internal/modules/identity/domain"
@@ -20,9 +21,57 @@ import (
 // than a mocked SQL driver: what is tested here is what the service decides,
 // and the SQL has its own tests against a real database.
 type storeStub struct {
+	rows map[string]identityrepo.GetSessionByTokenHashRow
+
 	created  []identityrepo.CreateSessionParams
+	touched  []identityrepo.TouchSessionParams
 	deleted  [][]byte
 	failWith error
+}
+
+func (s *storeStub) GetSessionByTokenHash(_ context.Context, hash []byte) (identityrepo.GetSessionByTokenHashRow, error) {
+	row, ok := s.rows[string(hash)]
+	if !ok {
+		return identityrepo.GetSessionByTokenHashRow{}, pgx.ErrNoRows
+	}
+
+	return row, nil
+}
+
+func (s *storeStub) TouchSession(_ context.Context, arg identityrepo.TouchSessionParams) (int64, error) {
+	if s.failWith != nil {
+		return 0, s.failWith
+	}
+
+	s.touched = append(s.touched, arg)
+
+	return 1, nil
+}
+
+// seed puts a live session in the stub and returns the token that reaches it.
+func (s *storeStub) seed(t *testing.T, created, expires time.Time) string {
+	t.Helper()
+
+	token, digest, err := identitydom.NewSessionToken()
+	if err != nil {
+		t.Fatalf("NewSessionToken(): %v", err)
+	}
+
+	if s.rows == nil {
+		s.rows = map[string]identityrepo.GetSessionByTokenHashRow{}
+	}
+
+	s.rows[string(digest)] = identityrepo.GetSessionByTokenHashRow{
+		ID:         "session-1",
+		UserID:     "user-1",
+		CreatedAt:  pgtype.Timestamptz{Time: created, Valid: true},
+		LastSeenAt: pgtype.Timestamptz{Time: created, Valid: true},
+		ExpiresAt:  pgtype.Timestamptz{Time: expires, Valid: true},
+		Email:      "member@example.test",
+		Name:       "Member",
+	}
+
+	return token
 }
 
 func (s *storeStub) CreateSession(_ context.Context, arg identityrepo.CreateSessionParams) (identityrepo.CreateSessionRow, error) {
