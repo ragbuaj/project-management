@@ -34,8 +34,19 @@ jobs:
           # suatu hari salah satunya tidak ikut.
           go-version-file: backend/go.mod
 
+      # Versinya dipin, bukan @latest. Gerbang yang alatnya tidak dipin bisa
+      # berubah perilakunya kapan saja tanpa ada satu pun commit di repo ini —
+      # entah jadi lebih longgar tanpa ada yang sadar, entah jadi merah di PR
+      # yang tidak mengubah apa pun.
+      #
+      # GOTOOLCHAIN=auto hanya di langkah ini, sama seperti di workflow sqlc.
+      # oasdiff 1.28.0 menuntut Go 1.26 sedangkan repo ini memakai 1.25.12, dan
+      # `setup-go` mengunci GOTOOLCHAIN ke `local`. Yang dilonggarkan adalah
+      # toolchain untuk **membangun alat**, bukan untuk membangun aplikasi.
       - name: Pasang oasdiff
-        run: go install github.com/oasdiff/oasdiff@latest
+        env:
+          GOTOOLCHAIN: auto
+        run: go install github.com/oasdiff/oasdiff@v1.28.0
 
       # Exit code 1 kalau ada perubahan yang merusak klien lama.
       - name: Bandingkan dengan branch tujuan
