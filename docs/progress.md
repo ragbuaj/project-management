@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `f438d97`.
+**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `ee404a7`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -11,23 +11,27 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 
 ## Ringkasan
 
-**22 selesai · 0 sedang · 20 belum**
+**27 selesai · 0 sedang · 15 belum**
 
-Fase 0 kini punya **29 sub-langkah**, bukan 26: Langkah 9 dan 11 dipecah jadi
-tujuh PR atas permintaan pemilik. Dari 29 itu, **9 selesai dan 20 belum**.
-Ditambah 10 item gerbang dokumen dan 3 item perubahan cakupan, semuanya
-selesai.
+Fase 0 punya **29 sub-langkah**: Langkah 9 dan 11 dipecah jadi tujuh PR atas
+permintaan pemilik. Dari 29 itu, **14 selesai dan 15 belum**. Ditambah 10 item
+gerbang dokumen dan 3 item perubahan cakupan, semuanya selesai.
 
-> **Angka ringkasan sudah dua kali salah, dan keduanya dicatat di sini.**
+**Skema Fase 0 selesai.** Tujuh migration, 33 tabel, 5 view `*_live`, 57 test
+di `internal/postgres`. Yang tersisa di Fase 0 adalah kode yang memakainya:
+Langkah 12–26.
+
+> **Angka ringkasan pernah dua kali salah, dan keduanya dicatat di sini.**
 >
 > Rekonsiliasi pertama menemukan `12 · 4 · 21` salah hitung — seharusnya 15
-> selesai, bukan 12. Rekonsiliasi kedua ini menemukan `20 · 0 · 19` juga sudah
+> selesai, bukan 12. Rekonsiliasi kedua menemukan `20 · 0 · 19` juga sudah
 > basi: pemecahan Langkah 8–11 menambah tiga baris item, tapi totalnya tidak
 > ikut dihitung ulang.
 >
-> Dua kali dari dua kali. Kesimpulannya jelas — **angka ringkasan di berkas ini
-> tidak layak dipercaya tanpa menghitung ulang tabelnya.** Tabelnya yang benar;
-> ringkasan hanya kenyamanan.
+> Rekonsiliasi ketiga ini dihitung ulang dari tabelnya, baris demi baris:
+> 17 baris `selesai` di tabel Fase 0 ditambah 10 baris gerbang dokumen = 27.
+> **Angka ringkasan tetap tidak layak dipercaya tanpa menghitung ulang
+> tabelnya.** Tabelnya yang benar; ringkasan hanya kenyamanan.
 
 ## Gerbang dokumen (sebelum baris kode pertama)
 
@@ -62,11 +66,11 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | — | `progress.md` + log sesi | selesai | Skill `progress-tracking` | PR #8 (`ac65098`) |
 | 8 | goose + `cmd/migrate` + migration `00001` identitas | selesai | Rencana Fase 0 §8 | PR B/#10 (`c9a5ea1`) |
 | 9a | Migration `00002` project, member, status, board, column, label | selesai | Rencana Fase 0 §9 | PR B/#11 (`f438d97`) |
-| 9b | Migration `00003` sprints, cards, FK komposit | belum | Rencana Fase 0 §9 | PR C |
-| 10 | Migration `00004` `activity_events` berpartisi + `outbox` | belum | Rencana Fase 0 §10 | PR D |
-| 11a | Migration `00005` isi kartu: comments, checklists, links, card_labels | belum | Rencana Fase 0 §11 | PR E |
-| 11b | Migration `00006` notifikasi, waktu, filter, automation | belum | Rencana Fase 0 §11 | PR F |
-| 11c | Migration `00007` token, share link, VCS | belum | Rencana Fase 0 §11 | PR G |
+| 9b | Migration `00003` sprints, cards, FK komposit | selesai | Rencana Fase 0 §9 | PR C/#13 (`9fc7bb8`) |
+| 10 | Migration `00004` `activity_events` berpartisi + `outbox` | selesai | Rencana Fase 0 §10 | PR D/#14 (`e22adf7`) |
+| 11a | Migration `00005` isi kartu: comments, checklists, links, card_labels | selesai | Rencana Fase 0 §11 | PR E/#15 (`1572586`) |
+| 11b | Migration `00006` notifikasi, waktu, filter, automation | selesai | Rencana Fase 0 §11 | PR F/#16 (`ba87e12`) |
+| 11c | Migration `00007` token, share link, VCS | selesai | Rencana Fase 0 §11 | PR G/#17 (`ee404a7`) |
 | 12 | `sqlc` + view `*_live` untuk soft delete | belum | Rencana Fase 0 §12 | — |
 | 13 | `internal/httpx` — request ID, log, recovery, bentuk error, rate limit | belum | Rencana Fase 0 §13 | — |
 | 14 | `internal/fracdex` + property test | belum | Rencana Fase 0 §14, ADR-0003 | — |
@@ -98,7 +102,20 @@ menuntut cgo.
 | Pertanyaan | Sejak | Memblokir |
 |---|---|---|
 | Peran default untuk rekan yang diundang: `admin` (saran saya) atau pindahkan sebagian aksi dari `admin` ke `member`? | 2026-08-06 | Fase 2, bukan Fase 0 |
-| Ketersediaan branch protection di paket akun ini — perlu dicek di `Settings → Rules` | 2026-08-06 | Tidak memblokir |
+| Pasang branch protection di `main`? Saat ini **tidak ada sama sekali** — lihat catatan di bawah | 2026-08-07 | Tidak memblokir |
+
+Pertanyaan branch protection sudah terjawab sebagiannya, dan jawabannya tidak
+menyenangkan: **`main` tidak punya proteksi apa pun.** Ini ditemukan bukan lewat
+pemeriksaan pengaturan, melainkan lewat akibatnya — `gh pr merge --auto` pada
+PR #13 langsung mengeksekusi merge, karena auto-merge hanya menunggu *required
+check* dan tidak ada satu pun yang wajib. PR #13 karena itu ter-merge sebelum
+CI-nya selesai. CI-nya kemudian hijau, tapi itu keberuntungan, bukan gerbang.
+
+PR #14 sampai #17 menunggu CI selesai lebih dulu, baru di-merge.
+
+Yang perlu diputuskan pemilik: apakah `main` diberi *required status check*
+untuk tiga job CI. Kalau ya, `--auto` menjadi aman dan tidak ada PR yang bisa
+masuk tanpa CI hijau.
 
 Pertanyaan ukuran PR sudah terjawab pada 2026-08-07: Langkah 8–11 dipecah jadi
 tujuh PR, masing-masing di bawah 250 baris yang ditulis tangan.
@@ -124,6 +141,11 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-06 | Penyaringan CI dipindah ke level workflow; `GO_VERSION` diganti `go-version-file` | Job kontrak API menyalakan runner di setiap PR hanya untuk menemukan spec tidak berubah | ya |
 | 2026-08-06 | Catatan batas platform GitHub ditambahkan ke `environments.md` | Anjuran sebelumnya keliru: secret scanning tidak gratis untuk repo privat | ya |
 | 2026-08-07 | Langkah 8–11 dipecah jadi tujuh PR (A–G), masing-masing di bawah 250 baris | Permintaan pemilik. Dua PR sebelumnya masing-masing ~790 baris, jauh di atas target 400 di `rules/50-git-workflow.md` | ya |
+| 2026-08-07 | `cards.status_id` hanya punya FK komposit, bukan komposit **dan** kolom-tunggal seperti di [data-model.md](data-model.md) | FK kolom-tunggal tidak menegakkan apa pun yang belum ditegakkan yang komposit, termasuk menolak penghapusan status yang masih dipegang kartu. Ia hanya menambah satu pemeriksaan di setiap insert | ya — lewat merge PR #13 |
+| 2026-08-07 | FK ke induk yang ikut terhapus memakai `NO ACTION`, bukan `RESTRICT` | Diuji langsung: `RESTRICT` lolos hari ini hanya karena `cards` kebetulan dihapus sebelum `statuses`. Urutan itu tidak dijanjikan | ya — lewat merge PR #13 |
+| 2026-08-07 | `activity_events` punya partisi `DEFAULT`; batas partisi dikunci ke UTC | Event ditulis dalam transaksi yang sama dengan perubahan yang memicunya, jadi event yang tidak bisa dirutekan menggagalkan permintaan pengguna. Batas UTC supaya nama partisi dan rentangnya tidak bergeser mengikuti `TimeZone` server | ya — lewat merge PR #14 |
+| 2026-08-07 | Urutan `checklists` dan `checklist_items` dijadikan **unik** per induk | Model data hanya menuliskan indeks biasa. Dua baris yang berbagi posisi mengurutkan diri berbeda antar-pembacaan | ya — lewat merge PR #15 |
+| 2026-08-07 | `CHECK` nama zona waktu di `recurring_cards` dibatalkan | PostgreSQL melarang subquery di dalam `CHECK`. Validasi zona dan parsing RFC 5545 didaftar sebagai invarian milik service | ya — lewat merge PR #16 |
 
 ## Cara memperbarui berkas ini
 

@@ -271,7 +271,7 @@ CREATE TABLE cards (
                     CHECK (type IN ('epic','story','task','bug','subtask')),
     title           text NOT NULL CHECK (length(title) BETWEEN 1 AND 500),
     description     text NOT NULL DEFAULT '',
-    status_id       uuid NOT NULL REFERENCES statuses(id) ON DELETE RESTRICT,
+    status_id       uuid NOT NULL,   -- FK komposit, lihat di bawah
     position        text COLLATE "C" NOT NULL CHECK (position <> ''),
     priority        text NOT NULL DEFAULT 'medium'
                     CHECK (priority IN ('low','medium','high','urgent')),
@@ -326,16 +326,34 @@ ditegakkan di service beserta test-nya:
 | Kedalaman subtask maksimum 1 tingkat | Butuh pembacaan induk |
 | Status hanya boleh berpindah lewat transisi yang diizinkan (E5) | Butuh pembacaan tabel `workflow_transitions` |
 
-Untuk yang pertama, FK komposit **dipakai** dan ditulis sekarang:
+Untuk yang pertama, FK komposit **dipakai**. Keduanya dideklarasikan di dalam
+`CREATE TABLE`, bukan lewat `ALTER TABLE` — yang terakhir mengambil
+`ACCESS EXCLUSIVE` lock:
 
 ```sql
-ALTER TABLE statuses ADD CONSTRAINT statuses_id_project_key UNIQUE (id, project_id);
-ALTER TABLE cards    ADD CONSTRAINT cards_status_same_project
-    FOREIGN KEY (status_id, project_id) REFERENCES statuses (id, project_id);
+-- di dalam CREATE TABLE statuses
+CONSTRAINT statuses_id_project_key UNIQUE (id, project_id)
+
+-- di dalam CREATE TABLE cards
+CONSTRAINT cards_status_same_project
+    FOREIGN KEY (status_id, project_id) REFERENCES statuses (id, project_id)
 ```
 
 Ini mencegah kelas bug yang paling mahal di model ini: kartu project A memakai
 status project B, yang membuat kartu itu hilang dari setiap board.
+
+**Ini satu-satunya foreign key pada `status_id`.** FK kolom-tunggal
+`REFERENCES statuses(id) ON DELETE RESTRICT` tidak dipakai: ia tidak menegakkan
+apa pun yang belum ditegakkan FK komposit — termasuk menolak penghapusan status
+yang masih dipegang kartu — sementara ia menambah satu pemeriksaan di setiap
+insert.
+
+**Tanpa klausa `ON DELETE`, jadi `NO ACTION`, bukan `RESTRICT`.** Keduanya hanya
+berbeda saat satu pernyataan menghapus baris yang dirujuk dan baris yang merujuk
+sekaligus — persis yang dilakukan job retensi saat menghapus permanen sebuah
+project. `NO ACTION` memeriksa setelah pernyataan selesai; `RESTRICT` memeriksa
+per baris dan bergantung pada `cards` kebetulan dihapus sebelum `statuses`.
+Urutan itu nyata tapi tidak dijanjikan. Berlaku sama untuk `parent_card_id`.
 
 ## Fase 1 — Riwayat & pengiriman event
 
@@ -365,6 +383,17 @@ CREATE INDEX activity_events_actor_idx   ON activity_events (actor_id, occurred_
 **Partisi per bulan sejak awal.** Menambahkan partisi ke tabel yang sudah besar
 itu mahal, dan tabel ini adalah satu-satunya yang tumbuh tanpa batas. Job
 bulanan membuat partisi tiga bulan ke depan dan melepas yang melewati retensi.
+
+Migration membuat partisi bulan berjalan dan tiga bulan berikutnya, dengan
+**batas dikunci ke UTC** supaya partisi bernama `2026_08` memuat tepat bulan
+Agustus UTC berapa pun `TimeZone` server.
+
+Ada juga **partisi `DEFAULT`**. Tanpa itu, event di luar semua rentang ditolak —
+dan karena event ditulis dalam transaksi yang sama dengan perubahan yang
+memicunya, penolakan itu menggagalkan permintaan pengguna. Tabel riwayat tidak
+boleh bisa menjatuhkan aplikasi. Ongkosnya: partisi bulan tidak bisa di-*attach*
+selama `DEFAULT` memuat baris milik bulan itu, sehingga pemulihannya adalah
+memindahkan baris itu keluar, attach, lalu kembalikan.
 
 ```sql
 CREATE TABLE outbox (
@@ -423,7 +452,9 @@ CREATE TABLE checklists (
     title    text NOT NULL DEFAULT 'Checklist',
     position text COLLATE "C" NOT NULL
 );
-CREATE INDEX checklists_card_idx ON checklists (card_id, position);
+-- Unik, bukan indeks biasa: dua checklist yang berbagi posisi akan
+-- mengurutkan diri berbeda antar-pembacaan.
+CREATE UNIQUE INDEX checklists_card_position_key ON checklists (card_id, position);
 
 CREATE TABLE checklist_items (
     id           uuid PRIMARY KEY,
@@ -435,7 +466,7 @@ CREATE TABLE checklist_items (
     completed_at timestamptz,
     completed_by uuid REFERENCES users(id) ON DELETE SET NULL
 );
-CREATE INDEX checklist_items_list_idx ON checklist_items (checklist_id, position);
+CREATE UNIQUE INDEX checklist_items_list_position_key ON checklist_items (checklist_id, position);
 
 CREATE TABLE card_links (
     id           uuid PRIMARY KEY,
@@ -557,6 +588,17 @@ CREATE TABLE recurring_cards (
 );
 CREATE INDEX recurring_cards_due_idx ON recurring_cards (next_run_at) WHERE enabled;
 ```
+
+Dua invarian di sini **tidak bisa jadi constraint** dan karena itu wajib
+ditegakkan di service, sama seperti lima invarian pada `cards`:
+
+| Invarian | Kenapa tidak bisa jadi constraint |
+|---|---|
+| `timezone` menyebut zona yang benar-benar ada | Butuh pembacaan `pg_timezone_names`; `CHECK` tidak boleh berisi subquery |
+| `rrule` terparse sebagai RFC 5545 | Tidak ada parser-nya di SQL |
+
+Yang pertama gagal pada pukul 09:00 di hari Senin yang seharusnya dipicu —
+bukan saat barisnya ditulis. Itu jenis kegagalan yang paling mahal ditemukan.
 
 `automation_runs.depth` dengan `CHECK (depth <= 5)` adalah pengaman terhadap
 aturan yang memicu dirinya sendiri — risiko terbesar Fase 7. Constraint
