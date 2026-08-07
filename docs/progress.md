@@ -11,7 +11,7 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 
 ## Ringkasan
 
-**28 selesai · 1 sedang · 13 belum**
+**29 selesai · 0 sedang · 13 belum**
 
 Fase 0 punya **29 sub-langkah**: Langkah 9 dan 11 dipecah jadi tujuh PR atas
 permintaan pemilik. Dari 29 itu, **15 selesai dan 14 belum**. Ditambah 10 item
@@ -72,7 +72,7 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | 11b | Migration `00006` notifikasi, waktu, filter, automation | selesai | Rencana Fase 0 §11 | PR F/#16 (`ba87e12`) |
 | 11c | Migration `00007` token, share link, VCS | selesai | Rencana Fase 0 §11 | PR G/#17 (`ee404a7`) |
 | 12 | `sqlc` + view `*_live` untuk soft delete | selesai | Rencana Fase 0 §12 | PR #19 |
-| 13 | `internal/httpx` — request ID, log, recovery, bentuk error, rate limit | sedang | Rencana Fase 0 §13 | PR #20, #22 — rate limit belum |
+| 13 | `internal/httpx` — request ID, log, recovery, bentuk error, rate limit | selesai | Rencana Fase 0 §13 | PR #20, #22, #23, #24 |
 | 14 | `internal/fracdex` + property test | belum | Rencana Fase 0 §14, ADR-0003 | — |
 | 15 | `modules/identity` — Argon2id, sesi, login/logout/me | belum | Rencana Fase 0 §15, ADR-0005 | — |
 | 16 | Middleware CSRF double-submit | belum | Rencana Fase 0 §16, ADR-0005 | — |
@@ -91,11 +91,6 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 
 **Tidak ada.**
 
-Langkah 13 berstatus `sedang`, bukan terhalang: request ID dan bentuk error
-sudah ter-merge (PR #20), recovery dan log permintaan menyusul (PR #22). Sisanya
-rate limit, yang membutuhkan klien Redis — ditunda ke langkah ini sejak PR #6
-dan dikerjakan sebagai PR tersendiri.
-
 Penghalang sebelumnya — GitHub Actions *degraded availability* pada 2026-08-06
 yang menggagalkan tiga run di langkah `Set up job` — sudah pulih. PR #6, #7,
 dan #8 ter-merge pada 2026-08-07 dengan CI hijau, termasuk `go test -race`
@@ -108,6 +103,8 @@ menuntut cgo.
 |---|---|---|
 | Peran default untuk rekan yang diundang: `admin` (saran saya) atau pindahkan sebagian aksi dari `admin` ke `member`? | 2026-08-06 | Fase 2, bukan Fase 0 |
 | Pasang branch protection di `main`? Saat ini **tidak ada sama sekali** — lihat catatan di bawah | 2026-08-07 | Tidak memblokir |
+| Berapa angka rate limit untuk login, reset password, dan pencarian? Mekanismenya sudah ada dan berparameter; angkanya belum ditetapkan di dokumen mana pun | 2026-08-07 | Langkah 18 |
+| Bagaimana IP klien ditentukan di belakang Caddy? Mempercayai `X-Forwarded-For` tanpa syarat berarti siapa pun bisa memalsukannya; tidak mempercayainya berarti seluruh pengguna terhitung sebagai satu IP dan saling menjatuhkan rate limit | 2026-08-07 | Langkah 18 dan 25 |
 
 Pertanyaan branch protection sudah terjawab sebagiannya, dan jawabannya tidak
 menyenangkan: **`main` tidak punya proteksi apa pun.** Ini ditemukan bukan lewat
@@ -151,6 +148,9 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-07 | `activity_events` punya partisi `DEFAULT`; batas partisi dikunci ke UTC | Event ditulis dalam transaksi yang sama dengan perubahan yang memicunya, jadi event yang tidak bisa dirutekan menggagalkan permintaan pengguna. Batas UTC supaya nama partisi dan rentangnya tidak bergeser mengikuti `TimeZone` server | ya — lewat merge PR #14 |
 | 2026-08-07 | Urutan `checklists` dan `checklist_items` dijadikan **unik** per induk | Model data hanya menuliskan indeks biasa. Dua baris yang berbagi posisi mengurutkan diri berbeda antar-pembacaan | ya — lewat merge PR #15 |
 | 2026-08-07 | `CHECK` nama zona waktu di `recurring_cards` dibatalkan | PostgreSQL melarang subquery di dalam `CHECK`. Validasi zona dan parsing RFC 5545 didaftar sebagai invarian milik service | ya — lewat merge PR #16 |
+| 2026-08-07 | Langkah 13 dipecah jadi empat PR (#20, #22, #23, #24) | Ditulis sekaligus jadi 873 baris, di atas dua PR yang ditolak pemilik pada 2026-08-07 | ya |
+| 2026-08-07 | `REDIS_URL` jadi variabel **wajib** | Redis yang tidak terjangkau ditangani saat runtime; Redis yang tidak pernah dikonfigurasi adalah deployment yang belum selesai. Deployment lama akan menolak start sampai variabel ini disetel | ya — lewat merge PR #23 |
+| 2026-08-07 | Paket `internal/redis` ditambahkan, tidak ada di pohon `architecture.md` | Simetris dengan `internal/postgres`, dan Fase 8 (realtime) serta cache akan memakainya juga. `architecture.md` diperbarui | ya — lewat merge PR #23 |
 
 ## Cara memperbarui berkas ini
 
