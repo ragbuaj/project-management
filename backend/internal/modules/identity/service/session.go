@@ -25,6 +25,9 @@ type SessionStore interface {
 	GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (identityrepo.GetSessionByTokenHashRow, error)
 	TouchSession(ctx context.Context, arg identityrepo.TouchSessionParams) (int64, error)
 	DeleteSessionByTokenHash(ctx context.Context, tokenHash []byte) (int64, error)
+	ListSessionsByUser(ctx context.Context, userID string) ([]identityrepo.ListSessionsByUserRow, error)
+	DeleteSessionForUser(ctx context.Context, arg identityrepo.DeleteSessionForUserParams) (int64, error)
+	DeleteOtherSessionsForUser(ctx context.Context, arg identityrepo.DeleteOtherSessionsForUserParams) (int64, error)
 }
 
 // ErrUnauthenticated is the single answer to every way of not being signed in:
@@ -190,6 +193,118 @@ func (s *Sessions) Revoke(ctx context.Context, token string) error {
 	}
 
 	return nil
+}
+
+// ErrSessionNotFound is the answer to revoking a session that is not there —
+// and to revoking one that belongs to somebody else.
+//
+// They are one error on purpose. docs/authorization.md keeps sessions to their
+// owner even for `owner`, and a caller who could tell "no such session" from
+// "not yours" would have an endpoint that confirms which session ids exist.
+var ErrSessionNotFound = errors.New("session not found")
+
+// SessionSummary is one signed-in session as its own owner sees it.
+//
+// There is no token and no digest here, and there is no field for one. What the
+// screen is for is recognizing a session — when it started, what it was, when
+// it was last used — and none of that requires the credential.
+type SessionSummary struct {
+	ID         string
+	UserAgent  string
+	CreatedAt  time.Time
+	LastSeenAt time.Time
+	ExpiresAt  time.Time
+	// Current marks the session making the request, so the screen can say which
+	// row is "this device" and warn before somebody signs themselves out.
+	Current bool
+}
+
+// List returns the caller's live sessions, newest activity first.
+//
+// It takes the caller's own id rather than reading it from anywhere else: this
+// is the query that must never be able to return somebody else's sessions, so
+// the only id it can be given is the one the request authenticated as.
+func (s *Sessions) List(ctx context.Context, userID, currentSessionID string) ([]SessionSummary, error) {
+	rows, err := s.store.ListSessionsByUser(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list sessions: %w", err)
+	}
+
+	out := make([]SessionSummary, 0, len(rows))
+
+	for _, row := range rows {
+		out = append(out, SessionSummary{
+			ID:         row.ID,
+			UserAgent:  row.UserAgent,
+			CreatedAt:  row.CreatedAt.Time,
+			LastSeenAt: row.LastSeenAt.Time,
+			ExpiresAt:  row.ExpiresAt.Time,
+			Current:    row.ID == currentSessionID,
+		})
+	}
+
+	return out, nil
+}
+
+// RevokeByID ends one of the caller's sessions.
+//
+// Revoking the session making the request is allowed. It is the caller's
+// session, they asked, and refusing would mean the one device somebody has in
+// their hand is the one they cannot sign out — which is backwards, because it
+// is also the only one they can be sure about.
+func (s *Sessions) RevokeByID(ctx context.Context, userID, sessionID string) error {
+	if !isUUID(sessionID) {
+		// The column is uuid, so anything else makes PostgreSQL reject the
+		// statement instead of matching no rows. That would turn "no such
+		// session" into a 500, and it would give a caller a way to tell a
+		// malformed id from a real one that is not theirs.
+		return ErrSessionNotFound
+	}
+
+	deleted, err := s.store.DeleteSessionForUser(ctx, identityrepo.DeleteSessionForUserParams{
+		ID:     sessionID,
+		UserID: userID,
+	})
+	if err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
+
+	if deleted == 0 {
+		return ErrSessionNotFound
+	}
+
+	return nil
+}
+
+// RevokeOthers ends every session except the one making the request, and
+// answers how many it ended.
+//
+// This is the button somebody presses after losing a laptop, so it must not
+// depend on knowing which sessions exist: a caller who has to enumerate before
+// revoking cannot act on a session that appeared between the two requests.
+func (s *Sessions) RevokeOthers(ctx context.Context, userID, currentSessionID string) (int64, error) {
+	if !isUUID(currentSessionID) {
+		// Unreachable from a real request — the id comes from a row this
+		// application wrote — so it is a programming error rather than input,
+		// and it must not be turned into "delete everything but nothing".
+		return 0, fmt.Errorf("revoke other sessions: current session id %q is not a uuid", currentSessionID)
+	}
+
+	deleted, err := s.store.DeleteOtherSessionsForUser(ctx, identityrepo.DeleteOtherSessionsForUserParams{
+		UserID:    userID,
+		CurrentID: currentSessionID,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("delete other sessions: %w", err)
+	}
+
+	return deleted, nil
+}
+
+func isUUID(id string) bool {
+	var parsed pgtype.UUID
+
+	return parsed.Scan(id) == nil
 }
 
 // cleanUserAgent bounds the header and drops anything that is not valid UTF-8.

@@ -189,3 +189,146 @@ func TestDeletingASessionEndsThatSessionAndOnlyThatOne(t *testing.T) {
 		t.Errorf("a repeated logout removed %d rows, want 0", rows)
 	}
 }
+
+// issueSessionID creates a session and returns its id, which is what the
+// account settings screen names a session by — the digest never leaves
+// authentication.
+func issueSessionID(t *testing.T, ctx context.Context, q *identityrepo.Queries, user string, expires time.Time) string {
+	t.Helper()
+
+	_, digest, err := identitydom.NewSessionToken()
+	if err != nil {
+		t.Fatalf("NewSessionToken(): %v", err)
+	}
+
+	row, err := q.CreateSession(ctx, identityrepo.CreateSessionParams{
+		UserID:    user,
+		TokenHash: digest,
+		UserAgent: "Mozilla/5.0 (test)",
+		ExpiresAt: pgtype.Timestamptz{Time: expires, Valid: true},
+	})
+	if err != nil {
+		t.Fatalf("CreateSession(): %v", err)
+	}
+
+	return row.ID
+}
+
+// The listing is scoped by the statement, and expired rows are left out: the
+// question it answers is "is anything signed in that should not be", and a row
+// that can no longer authenticate is not an answer to it.
+func TestTheListingShowsOnlyTheCallersLiveSessions(t *testing.T) {
+	ctx, _, q := queriesTx(t)
+
+	mine := createUser(t, ctx, q, "mine@example.test", "Mine")
+	theirs := createUser(t, ctx, q, "theirs@example.test", "Theirs")
+
+	live := issueSessionID(t, ctx, q, mine, time.Now().Add(identitydom.SessionIdleWindow))
+	expired := issueSessionID(t, ctx, q, mine, time.Now().Add(-time.Minute))
+	other := issueSessionID(t, ctx, q, theirs, time.Now().Add(identitydom.SessionIdleWindow))
+
+	rows, err := q.ListSessionsByUser(ctx, mine)
+	if err != nil {
+		t.Fatalf("ListSessionsByUser(): %v", err)
+	}
+
+	if len(rows) != 1 {
+		t.Fatalf("got %d sessions, want only the one live session", len(rows))
+	}
+
+	if rows[0].ID != live {
+		t.Errorf("got session %s, want %s", rows[0].ID, live)
+	}
+
+	for _, unwanted := range []string{expired, other} {
+		for _, row := range rows {
+			if row.ID == unwanted {
+				t.Errorf("session %s should not be listed", unwanted)
+			}
+		}
+	}
+}
+
+// The one that matters. docs/authorization.md keeps sessions to their owner
+// even for `owner`, and the statement is what enforces it — not a check in Go
+// that a later refactor can drop.
+func TestASessionCannotBeRevokedByAnotherAccount(t *testing.T) {
+	ctx, _, q := queriesTx(t)
+
+	victim := createUser(t, ctx, q, "victim@example.test", "Victim")
+	attacker := createUser(t, ctx, q, "attacker@example.test", "Attacker")
+
+	target := issueSessionID(t, ctx, q, victim, time.Now().Add(identitydom.SessionIdleWindow))
+
+	rows, err := q.DeleteSessionForUser(ctx, identityrepo.DeleteSessionForUserParams{
+		ID:     target,
+		UserID: attacker,
+	})
+	if err != nil {
+		t.Fatalf("DeleteSessionForUser(): %v", err)
+	}
+
+	if rows != 0 {
+		t.Fatalf("another account deleted %d of the victim's sessions", rows)
+	}
+
+	// And the owner can still revoke it, so the guard is ownership rather than
+	// the statement simply never deleting anything.
+	rows, err = q.DeleteSessionForUser(ctx, identityrepo.DeleteSessionForUserParams{
+		ID:     target,
+		UserID: victim,
+	})
+	if err != nil {
+		t.Fatalf("DeleteSessionForUser() as the owner: %v", err)
+	}
+
+	if rows != 1 {
+		t.Errorf("the owner removed %d rows, want 1", rows)
+	}
+}
+
+// Signing out everywhere else keeps exactly one session — the one making the
+// request — and reaches nobody else's account.
+func TestRevokingTheOthersSparesTheCurrentSessionAndOtherAccounts(t *testing.T) {
+	ctx, _, q := queriesTx(t)
+
+	mine := createUser(t, ctx, q, "everywhere@example.test", "Everywhere")
+	theirs := createUser(t, ctx, q, "bystander@example.test", "Bystander")
+
+	live := time.Now().Add(identitydom.SessionIdleWindow)
+
+	current := issueSessionID(t, ctx, q, mine, live)
+	issueSessionID(t, ctx, q, mine, live)
+	issueSessionID(t, ctx, q, mine, live)
+	bystander := issueSessionID(t, ctx, q, theirs, live)
+
+	rows, err := q.DeleteOtherSessionsForUser(ctx, identityrepo.DeleteOtherSessionsForUserParams{
+		UserID:    mine,
+		CurrentID: current,
+	})
+	if err != nil {
+		t.Fatalf("DeleteOtherSessionsForUser(): %v", err)
+	}
+
+	if rows != 2 {
+		t.Fatalf("removed %d sessions, want the two that were not current", rows)
+	}
+
+	remaining, err := q.ListSessionsByUser(ctx, mine)
+	if err != nil {
+		t.Fatalf("ListSessionsByUser(): %v", err)
+	}
+
+	if len(remaining) != 1 || remaining[0].ID != current {
+		t.Errorf("left %+v, want only the current session", remaining)
+	}
+
+	others, err := q.ListSessionsByUser(ctx, theirs)
+	if err != nil {
+		t.Fatalf("ListSessionsByUser() for the bystander: %v", err)
+	}
+
+	if len(others) != 1 || others[0].ID != bystander {
+		t.Error("signing out everywhere else reached another account's sessions")
+	}
+}

@@ -108,6 +108,20 @@ func (s *store) TouchSession(context.Context, identityrepo.TouchSessionParams) (
 	return 1, nil
 }
 
+// The session-listing half of the repository. These endpoints have their own
+// tests; here they only have to exist so the handler can be built.
+func (s *store) ListSessionsByUser(context.Context, string) ([]identityrepo.ListSessionsByUserRow, error) {
+	return nil, nil
+}
+
+func (s *store) DeleteSessionForUser(context.Context, identityrepo.DeleteSessionForUserParams) (int64, error) {
+	return 1, nil
+}
+
+func (s *store) DeleteOtherSessionsForUser(context.Context, identityrepo.DeleteOtherSessionsForUserParams) (int64, error) {
+	return 0, nil
+}
+
 func (s *store) DeleteSessionByTokenHash(_ context.Context, hash []byte) (int64, error) {
 	if s.failLogout != nil {
 		return 0, s.failLogout
