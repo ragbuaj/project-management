@@ -97,6 +97,7 @@ backend/
 ├── internal/
 │   ├── config/                 # muat & validasi env, gagal cepat saat start
 │   ├── postgres/               # pool pgx, transaksi, health
+│   ├── redis/                  # klien, rate limiter — cache & fanout menyusul
 │   ├── httpx/                  # router, middleware, bentuk error, request ID
 │   ├── authz/                  # policy — satu-satunya tempat izin diputuskan
 │   ├── fracdex/                # fractional index (ADR-0003)
