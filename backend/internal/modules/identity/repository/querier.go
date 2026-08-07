@@ -9,7 +9,25 @@ import (
 )
 
 type Querier interface {
+	// Sessions. The token itself never reaches this file: what is stored and what
+	// is looked up is its SHA-256, computed in the domain layer (ADR-0005).
+	CreateSession(ctx context.Context, arg CreateSessionParams) (CreateSessionRow, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
+	// Logout. ADR-0005 chose opaque sessions precisely so this is all it takes:
+	// one DELETE, effective on the next request, with no revocation list.
+	DeleteSessionByTokenHash(ctx context.Context, tokenHash []byte) (int64, error)
+	// Every authenticated request runs this, which is why it also returns the
+	// user: the alternative is two round trips per request for data that is
+	// always needed together.
+	//
+	// The join is against users_live, so a soft-deleted account stops
+	// authenticating the moment it is masked — without a sweep having to reach its
+	// sessions first. A join against users would keep them working until then.
+	//
+	// Expiry is deliberately not filtered here. The caller has to distinguish an
+	// expired session from one that never existed for the log, and a WHERE clause
+	// that hides the row makes the two indistinguishable.
+	GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (GetSessionByTokenHashRow, error)
 	// Login. Compared with lower() because addresses are not case sensitive and
 	// users_email_key indexes lower(email) for exactly this lookup.
 	GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error)
@@ -26,6 +44,9 @@ type Querier interface {
 	// is replaced rather than blanked so the partial unique index frees the
 	// original for reuse.
 	SoftDeleteUser(ctx context.Context, id string) (int64, error)
+	// Sliding renewal. The caller decides how often this is worth running; see
+	// Session.NeedsRenewal, which exists so this is not one write per request.
+	TouchSession(ctx context.Context, arg TouchSessionParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)
