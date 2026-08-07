@@ -1,9 +1,6 @@
 package domain
 
 import (
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"time"
@@ -31,12 +28,6 @@ const (
 	sessionRenewalFloor = time.Hour
 )
 
-// sessionTokenBytes is the entropy behind the cookie. ADR-0005 says 256 bits,
-// which is the same width as the SHA-256 that indexes it: guessing a valid
-// token and finding a hash collision are then equally hopeless, and neither is
-// the weak half.
-const sessionTokenBytes = 32
-
 var (
 	// ErrSessionTokenMalformed means the value is not shaped like a token this
 	// application issues. It is not proof of an attack — an old cookie from
@@ -62,46 +53,20 @@ type Session struct {
 }
 
 // NewSessionToken returns the value to put in the cookie and the digest to
-// store beside it.
-//
-// Only the digest is stored, so a database dump — a backup on a laptop, a
-// leaked replica — does not contain anything that can be presented as a
-// session. This is the same reason ADR-0005 stores API tokens and share links
-// as digests.
-//
-// No salt and no work factor here, unlike a password: the input is 256 bits of
-// randomness, so there is no dictionary to precompute and nothing to slow an
-// attacker down for.
+// store beside it. See newOpaqueToken for why only the digest is kept.
 func NewSessionToken() (token string, digest []byte, err error) {
-	raw := make([]byte, sessionTokenBytes)
-	if _, err := rand.Read(raw); err != nil {
-		return "", nil, fmt.Errorf("read session token: %w", err)
-	}
-
-	sum := sha256.Sum256(raw)
-
-	return base64.RawURLEncoding.EncodeToString(raw), sum[:], nil
+	return newOpaqueToken()
 }
 
 // SessionTokenDigest turns a token presented by a client back into the digest
 // stored in sessions.token_hash.
-//
-// The shape is checked first. A cookie carries whatever the client puts in it,
-// and a lookup for a value that cannot possibly be a token is a query the
-// database should never be asked to run.
 func SessionTokenDigest(token string) ([]byte, error) {
-	raw, err := base64.RawURLEncoding.DecodeString(token)
+	digest, err := decodeOpaqueToken(token)
 	if err != nil {
-		return nil, fmt.Errorf("%w: it is not base64url", ErrSessionTokenMalformed)
+		return nil, fmt.Errorf("%w: %w", ErrSessionTokenMalformed, err)
 	}
 
-	if len(raw) != sessionTokenBytes {
-		return nil, fmt.Errorf("%w: it decodes to %d bytes, want %d", ErrSessionTokenMalformed, len(raw), sessionTokenBytes)
-	}
-
-	sum := sha256.Sum256(raw)
-
-	return sum[:], nil
+	return digest, nil
 }
 
 // NewSessionExpiry is the deadline a session gets when it is created.
