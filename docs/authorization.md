@@ -13,10 +13,26 @@ positif (yang berhak bisa) dan test negatif (yang tidak berhak dapat `404`).
 |---|---|---|
 | `guest` | Belum autentikasi | — |
 | `share` | Pemegang share link. Baca-saja, satu board, tanpa identitas | `share_links` (hash token, belum kedaluwarsa, belum dicabut) |
-| `viewer` | Anggota project, hanya membaca | `project_members.role = 'viewer'` |
-| `member` | Anggota project, bisa mengubah pekerjaan | `project_members.role = 'member'` |
-| `admin` | Anggota project dengan hak pengaturan | `project_members.role = 'admin'` |
+| `viewer` | Anggota project, hanya membaca | Peran efektif — lihat di bawah |
+| `member` | Anggota project, bisa mengubah pekerjaan | Peran efektif — lihat di bawah |
+| `admin` | Anggota project dengan hak pengaturan | Peran efektif — lihat di bawah |
 | `owner` | Pemilik instalasi. Satu orang | `users.is_owner = true` |
+
+**Peran atas sebuah project punya dua sumber sejak
+[ADR-0011](adr/0011-folder-dan-pewarisan-keanggotaan.md):** `project_members`
+dan `folder_members` dari folder tempat project itu berada.
+
+> **Peran efektif adalah yang tertinggi di antara keduanya.** Urutan:
+> `viewer` < `member` < `admin`.
+
+Yang tertinggi, bukan yang lebih spesifik. Undangan ke folder dimaksudkan
+memberi akses; kalau peran project yang lebih rendah menimpanya, menambahkan
+seseorang ke sebuah folder akan diam-diam mencabut hak yang sudah ia punya di
+salah satu project di dalamnya.
+
+Konsekuensi yang harus dinyatakan terang: **`admin` sebuah folder adalah
+`admin` setiap project di dalamnya**, dan memindahkan project ke sebuah folder
+memberi akses kepada seluruh anggota folder itu.
 
 **Peran dibaca dari data server pada setiap permintaan, tidak pernah dari klaim
 di dalam token.** Ini konsekuensi langsung dari
@@ -43,7 +59,9 @@ Berlaku di seluruh matriks, tidak diulang per baris:
 4. **Semua izin diputuskan di `internal/authz`.** Handler bertanya, tidak
    memutuskan.
 5. **Keanggotaan diwarisi ke seluruh isi project.** Hak atas sebuah kartu
-   diturunkan dari `cards.project_id`, bukan disimpan di kartu.
+   diturunkan dari `cards.project_id`, bukan disimpan di kartu. Sejak
+   ADR-0011, hak atas project sendiri bisa diturunkan dari `projects.folder_id`
+   — dan `authz.EffectiveRole` adalah satu-satunya tempat yang tahu itu.
 6. **API token bertindak sebagai penggunanya, lalu dipersempit oleh `scopes`.**
    Token tidak pernah menambah hak; ia hanya bisa mengurangi.
 7. **`share` tidak pernah menyentuh endpoint biasa.** Ia dilayani jalur
@@ -56,12 +74,30 @@ Berlaku di seluruh matriks, tidak diulang per baris:
 
 Legenda: **ya** = diizinkan · **—** = ditolak · **milik** = hanya baris miliknya
 
-### Project & keanggotaan
+### Folder
+
+Kolom peran di bawah adalah peran **di folder itu** (`folder_members.role`).
 
 | Sumber daya | Aksi | guest | share | viewer | member | admin | owner | Aturan kepemilikan |
 |---|---|:--:|:--:|:--:|:--:|:--:|:--:|---|
-| Project | lihat | — | — | ya | ya | ya | ya | Hanya project tempat ia jadi anggota. `owner` hanya kalau anggota |
-| Project | buat | — | — | — | — | — | ya | Pembuat otomatis jadi `admin` |
+| Folder | buat | — | — | ya | ya | ya | ya | Setiap akun aktif boleh. Pembuat otomatis jadi `admin` folder |
+| Folder | lihat | — | — | ya | ya | ya | ya | Hanya folder tempat ia jadi anggota. Project di dalamnya yang bukan haknya tetap tidak terlihat |
+| Folder | ubah nama | — | — | — | — | ya | — | — |
+| Folder | hapus | — | — | — | — | ya | — | Project di dalamnya menjadi tanpa folder, **tidak** ikut terhapus |
+| Anggota folder | lihat daftar | — | — | ya | ya | ya | — | — |
+| Anggota folder | undang / ubah peran / keluarkan | — | — | — | — | ya | — | Aturan yang sama dengan anggota project: tidak boleh mengubah peran diri sendiri, tidak boleh menurunkan `admin` terakhir |
+| Project | pindahkan ke folder | — | — | — | — | ya | — | Butuh `admin` efektif atas project **dan** `admin` atas folder tujuan. **Ini perubahan akses** — tercatat di `activity_events` |
+| Project | keluarkan dari folder | — | — | — | — | ya | — | Butuh `admin` efektif atas project. Tercatat di `activity_events` |
+
+### Project & keanggotaan
+
+Kolom peran di bawah adalah **peran efektif** — yang tertinggi antara peran
+project dan peran folder induknya.
+
+| Sumber daya | Aksi | guest | share | viewer | member | admin | owner | Aturan kepemilikan |
+|---|---|:--:|:--:|:--:|:--:|:--:|:--:|---|
+| Project | lihat | — | — | ya | ya | ya | ya | Hanya project tempat ia jadi anggota, langsung maupun lewat folder. `owner` hanya kalau anggota |
+| Project | buat | — | — | ya | ya | ya | ya | **Setiap akun aktif boleh**, bukan hanya `owner` instalasi. Pembuat otomatis jadi `admin`, dan tercatat di `projects.created_by`. Kalau dibuat di dalam folder, butuh `member` atau `admin` folder itu |
 | Project | ubah nama/deskripsi | — | — | — | — | ya | — | Harus anggota |
 | Project | ubah `key` | — | — | — | — | — | — | **Tidak boleh siapa pun.** Mengubah `key` mengubah setiap nomor kartu yang pernah ditulis di commit, chat, dan dokumen |
 | Project | arsipkan | — | — | — | — | ya | — | Harus anggota |
@@ -162,8 +198,7 @@ project. **Semuanya tercatat di `activity_events` dengan penanda khusus.**
 
 | Aksi | Alasan |
 |---|---|
-| Membuat project | Harus ada yang bisa |
-| Mengundang & menonaktifkan pengguna instalasi | Pendaftaran mandiri adalah non-goal |
+| Mengundang & menonaktifkan pengguna instalasi | Pendaftaran mandiri adalah non-goal. Undangan ke sebuah project hanya menyasar orang yang **sudah** punya akun; yang membuat akunnya tetap `owner` |
 | Menambahkan dirinya sebagai `admin` ke project mana pun | Jalur pemulihan saat admin terakhir sebuah project hilang. **Tercatat, dan anggota project diberi notifikasi** |
 | Mencabut API token milik siapa pun | Respons insiden |
 | Menghapus project secara permanen | Harus ada yang bisa |
@@ -201,6 +236,13 @@ Untuk setiap baris di matriks, minimal:
    yang boleh ia lihat, `404` untuk yang tidak.
 4. **Kepemilikan baris** — untuk baris bertanda "milik": pengguna A tidak bisa
    menyentuh baris milik pengguna B walau keduanya anggota project yang sama.
+5. **Asal hak** — sejak [ADR-0011](adr/0011-folder-dan-pewarisan-keanggotaan.md),
+   setiap hak bisa datang dari dua arah. Minimal satu baris test membuktikan
+   hak yang **hanya** datang dari folder berlaku, dan satu lagi membuktikan
+   peran folder yang lebih tinggi menang atas peran project yang lebih rendah.
+6. **Perpindahan folder** — memindahkan project ke folder lain adalah
+   perubahan akses. Test tersendiri: orang yang sebelumnya menerima `404`
+   menerima `200` sesudahnya, dan sebaliknya saat project dikeluarkan.
 
 Empat pola ini ditulis sebagai table-driven test bersama (`rules/20-go.md`),
 bukan disalin per endpoint. Menambah endpoint berarti menambah baris di tabel

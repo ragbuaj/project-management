@@ -11,11 +11,12 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 
 ## Ringkasan
 
-**34 selesai · 0 sedang · 10 belum**
+**34 selesai · 0 sedang · 11 belum**
 
 Fase 0 punya **31 sub-langkah**: Langkah 9, 11, dan 15 dipecah jadi beberapa PR
 atas permintaan pemilik. Dari 31 itu, **21 selesai dan 10 belum**. Ditambah 10
-item gerbang dokumen dan 3 item perubahan cakupan, semuanya selesai.
+item gerbang dokumen (semuanya selesai) dan 4 item perubahan cakupan (3
+selesai, 1 belum — migration folder).
 
 **Skema dan fondasi backend selesai.** Tujuh migration, 33 tabel, 5 view
 `*_live`, `sqlc` terpasang dengan gerbang CI-nya, `internal/httpx` lengkap —
@@ -25,7 +26,13 @@ request ID, log terstruktur, recovery, bentuk error, rate limit — dan
 Langkah 15 dan 16 selesai: aplikasi bisa memasukkan orang, mengenalinya di
 permintaan berikutnya, dan mengeluarkannya — dan sejak Langkah 16 setiap
 permintaan yang mengubah data wajib membawa pasangan CSRF. Yang tersisa dimulai
-dari Langkah 17 (otorisasi), lalu undangan dan seluruh frontend.
+dari skema folder, lalu Langkah 17 (otorisasi), undangan, dan seluruh frontend.
+
+**Model otorisasi berubah pada 2026-08-07.** Setiap akun kini boleh membuat
+project, dan project dikelompokkan ke dalam **folder** yang keanggotaannya
+diwariskan ([ADR-0011](adr/0011-folder-dan-pewarisan-keanggotaan.md)). Sejak
+itu peran atas sebuah project punya dua sumber, dan `internal/authz` harus
+dibangun untuk keduanya sejak baris pertamanya.
 
 > **Angka ringkasan pernah dua kali salah, dan keduanya dicatat di sini.**
 >
@@ -58,6 +65,10 @@ dari Langkah 17 (otorisasi), lalu undangan dan seluruh frontend.
 >
 > Rekonsiliasi kedelapan (2026-08-07, `82b3e4d`): 34 baris, 24 `selesai`,
 > 10 `belum`. Jadi 34 · 0 · 10.
+>
+> Rekonsiliasi kesembilan (2026-08-07, setelah ADR-0011): tabel Fase 0 bertambah
+> satu baris — migration folder — jadi 35 baris, 24 `selesai`, 11 `belum`.
+> Jadi 34 · 0 · 11. Angka `selesai` tidak berubah; yang bertambah pekerjaannya.
 
 ## Gerbang dokumen (sebelum baris kode pertama)
 
@@ -104,7 +115,8 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | 15b | `identity` — terbitkan, baca, dan cabut sesi | selesai | Rencana Fase 0 §15, ADR-0005 | PR #31, #32, #33, #34 (`f63728e`) |
 | 15c | `identity` — `/login`, `/logout`, `/me` | selesai | Rencana Fase 0 §15, ADR-0005 | PR #38, #39, #40, #41 (`b67d79c`) |
 | 16 | Middleware CSRF double-submit | selesai | Rencana Fase 0 §16, ADR-0005 | PR #46, #47 (`82b3e4d`) |
-| 17 | `internal/authz` + table-driven test empat pola | belum | Rencana Fase 0 §17, [authorization.md](authorization.md) | — |
+| — | Migration `00008` `folders`, `folder_members`, `projects.folder_id` | belum | Perubahan cakupan, lihat bawah; [ADR-0011](adr/0011-folder-dan-pewarisan-keanggotaan.md) | — |
+| 17 | `internal/authz` + table-driven test **enam** pola | belum | Rencana Fase 0 §17, [authorization.md](authorization.md), ADR-0011 | — |
 | 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | belum | Rencana Fase 0 §18 | — |
 | 19 | **Gerbang manusia:** arah desain tertulis | belum | Rencana Fase 0 §19, `rules/15-ui-design.md` §2 | — |
 | 20 | Scaffold Vite + shadcn + token | belum | Rencana Fase 0 §20 | — |
@@ -161,7 +173,7 @@ menuntut cgo.
 | Pertanyaan | Sejak | Memblokir |
 |---|---|---|
 | Peran default untuk rekan yang diundang: `admin` (saran saya) atau pindahkan sebagian aksi dari `admin` ke `member`? | 2026-08-06 | Fase 2, bukan Fase 0 |
-| Peran mana yang boleh membuat project, dan apakah pembuatnya menjadi peran keempat di `project_members`? Model lama mengizinkan hanya `owner` instalasi; pemilik meminta setiap akun bisa membuat project dan memilikinya | 2026-08-07 | Langkah 17 (`internal/authz`) dan Langkah 18 (undangan) |
+| Peran default untuk anggota yang diundang ke folder: sama dengan default project (`admin`), atau lebih rendah? Folder membuka lebih banyak sekaligus | 2026-08-07 | Langkah 18 (undangan), bukan Langkah 17 |
 
 
 Pertanyaan branch protection **tertutup pada 2026-08-07**. Repo dijadikan
@@ -192,7 +204,17 @@ urutan itu ditegakkan server, bukan ingatan.
 Pertanyaan ukuran PR sudah terjawab pada 2026-08-07: Langkah 8–11 dipecah jadi
 tujuh PR, masing-masing di bawah 250 baris yang ditulis tangan.
 
-Tiga pertanyaan terjawab pada 2026-08-07 dan menjadi dua ADR:
+Empat pertanyaan lain terjawab pada 2026-08-07, dan yang pertama mengubah model
+otorisasi:
+
+| Pertanyaan | Jawaban | Tercatat di |
+|---|---|---|
+| Siapa yang boleh membuat project | Setiap akun aktif, bukan hanya `owner` instalasi. Pembuat otomatis `admin`, jejaknya di `projects.created_by` yang sudah ada sejak migration `00002` | [authorization.md](authorization.md), [openapi.yaml](api/openapi.yaml) |
+| Apakah "folder" hal yang sama dengan project | Bukan. Folder adalah wadah berisi banyak project, satu tingkat, dan **keanggotaannya diwariskan** ke project di dalamnya. Peran efektif = yang tertinggi antara peran folder dan peran project | [ADR-0011](adr/0011-folder-dan-pewarisan-keanggotaan.md) |
+| Rujukan desain untuk gerbang Langkah 19 | Jira — satu-satunya rujukan terkenal yang punya sprint, backlog, burndown, dan laporan waktu sekaligus. Kepadatan kontrolnya justru yang perlu ditahan saat diterjemahkan | Langkah 19, belum ditulis |
+| Pin `gitleaks` | v8.30.1, dengan `GOTOOLCHAIN=auto` | `ci.yml`, PR #49 |
+
+Tiga pertanyaan terjawab lebih awal pada 2026-08-07 dan menjadi dua ADR:
 
 | Pertanyaan | Jawaban | Tercatat di |
 |---|---|---|
@@ -243,6 +265,9 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-07 | Repo dijadikan publik | Branch protection, ruleset, *secret scanning*, dan *push protection* semuanya digerbang plan: gratis hanya untuk repo publik. Push protection adalah kontrol yang sebelumnya tidak ada — ia menolak secret sebelum commit-nya mendarat, sedangkan `gitleaks` di CI baru berteriak setelah ter-push | ya — keputusan pemilik pada 2026-08-07 |
 | 2026-08-07 | Log sesi (`docs/sessions/`) dilepas dari repo dan masuk `.gitignore` | Permintaan pemilik, menyusul repo jadi publik. Isinya catatan proses, bukan dokumentasi proyek. Konsekuensinya: klon baru tidak membawa riwayat sesi, jadi `progress.md` menjadi satu-satunya pembawa konteks antar-sesi yang ikut repo | ya |
 | 2026-08-07 | `oasdiff` dipin ke v1.28.0 dan dipasang dengan `GOTOOLCHAIN=auto` | Gerbang kontrak berhenti bisa memasang alatnya: `@latest` menuntut Go 1.26. Sekaligus menghapus `@latest` — gerbang yang alatnya tidak dipin bisa berubah perilakunya tanpa satu pun commit di repo ini | ya — ditanyakan dan disetujui pemilik pada 2026-08-07 |
+| 2026-08-07 | Pembuatan project dibuka untuk **setiap akun aktif**, bukan hanya `owner` instalasi | Permintaan pemilik. Aman karena pendaftaran mandiri tetap non-goal: akun hanya lahir dari undangan `owner`, jadi himpunan pembuatnya tetap terkendali. Tidak butuh migration — `projects.created_by` sudah ada sejak `00002` | ya |
+| 2026-08-07 | **Folder** ditambahkan sebagai wadah project, dengan keanggotaan yang diwariskan | Permintaan pemilik. Ini penambahan cakupan besar, dan konsekuensinya bukan satu tabel: setiap pemeriksaan izin jadi punya dua sumber kebenaran, dan memindahkan project antar-folder menjadi perubahan akses. Lihat [ADR-0011](adr/0011-folder-dan-pewarisan-keanggotaan.md) | ya — keputusan pemilik |
+| 2026-08-07 | Skema folder dijadwalkan masuk di Fase 0, sebelum `internal/authz` ditulis | Alasan yang sama dengan [ADR-0007](adr/0007-postgresql-18.md): database masih kosong. Menulis `authz` tanpa folder lebih dulu berarti menulis ulang seluruh test-nya begitu folder datang | ya |
 | 2026-08-07 | `gitleaks` dipin ke v8.30.1 dan dipasang dengan `GOTOOLCHAIN=auto`, menutup pertanyaan yang terbuka sejak 2026-08-07 | Alasan yang sama dengan `oasdiff`, dan taruhannya lebih besar: ia salah satu dari dua check **wajib**, jadi rilis yang menuntut Go lebih baru akan menghentikan seluruh merge tanpa satu pun commit di repo ini. v8.30.1 sendiri hanya menuntut Go 1.24.11; `GOTOOLCHAIN=auto` dipasang supaya kenaikan pin berikutnya tidak gagal karena alasan yang sudah dikenali | ya — ditanyakan dan disetujui pemilik pada 2026-08-07 |
 | 2026-08-07 | *Allow auto-merge* dinyalakan di setelan repo | `gh pr merge --auto` sebelumnya ditolak — branch protection dan *Allow auto-merge* adalah dua setelan berbeda, dan yang kedua mati. Gerbangnya tidak berubah: branch protection tetap yang menentukan kapan sebuah PR boleh masuk | ya — keputusan pemilik pada 2026-08-07 |
 | 2026-08-07 | `password.minLength` di kontrak turun dari 8 ke 1, dengan `maxLength` 1024 | Kebijakan panjang ditegakkan saat password **dibuat**, bukan saat dipakai. Endpoint login yang menolak password pendek baru saja memberi tahu pemanggilnya apa aturannya. `oasdiff` tidak menganggapnya merusak | ya — lewat merge PR #39 |

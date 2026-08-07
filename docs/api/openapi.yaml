@@ -173,8 +173,13 @@ paths:
       tags: [projects]
       summary: Buat project baru
       description: |
-        Hanya `owner`. Pembuat otomatis menjadi `admin`. Project baru disemai
-        dengan tiga status default — satu per kategori — dan satu board.
+        Setiap akun aktif boleh. Pembuat otomatis menjadi `admin`. Project baru
+        disemai dengan tiga status default — satu per kategori — dan satu
+        board.
+
+        Kalau `folder_id` diisi, pemanggil harus `member` atau `admin` folder
+        itu, dan seluruh anggota folder ikut mendapat akses sesuai perannya
+        di sana (ADR-0011).
       requestBody:
         required: true
         content:
@@ -191,6 +196,9 @@ paths:
                     setelah project dibuat** — lihat docs/authorization.md.
                 name: { type: string, minLength: 1, maxLength: 200 }
                 description: { type: string, maxLength: 5000 }
+                folder_id:
+                  type: [string, 'null']
+                  description: Dihilangkan atau `null` berarti project berdiri sendiri.
       responses:
         '201':
           description: Dibuat
@@ -613,13 +621,18 @@ components:
 
     Project:
       type: object
-      required: [id, key, name, description, my_role, created_at, archived_at]
+      required: [id, key, name, description, folder_id, my_role, created_at, archived_at]
       properties:
         id:          { type: string }
         key:         { type: string, examples: ['PM'] }
         name:        { type: string }
         description: { type: string }
-        my_role:     { $ref: '#/components/schemas/ProjectRole' }
+        folder_id:   { type: [string, 'null'], description: '`null` berarti project berdiri sendiri (ADR-0011)' }
+        my_role:
+          $ref: '#/components/schemas/ProjectRole'
+          description: |
+            Peran **efektif** — yang tertinggi antara peran di project ini dan
+            peran di folder induknya (ADR-0011).
         created_at:  { type: string, format: date-time }
         archived_at: { type: [string, 'null'], format: date-time }
 

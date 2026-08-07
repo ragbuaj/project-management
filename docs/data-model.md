@@ -63,6 +63,10 @@ membuktikan view-nya masih sepadan; ia otomatis mencakup tabel yang belum ada.
 
 ```mermaid
 erDiagram
+    users ||--o{ folder_members : "anggota"
+    folders ||--o{ folder_members : ""
+    folders ||--o{ projects : "berisi"
+
     users ||--o{ project_members : "anggota"
     projects ||--o{ project_members : ""
     projects ||--o{ statuses : "memiliki"
@@ -164,13 +168,39 @@ CREATE UNIQUE INDEX password_resets_token_hash_key ON password_resets (token_has
 
 ## Fase 1 — Project, board, status, kartu
 
+Folder dan pewarisan keanggotaannya ditetapkan
+[ADR-0011](adr/0011-folder-dan-pewarisan-keanggotaan.md). Satu tingkat: folder
+berisi project, tidak berisi folder lain.
+
 ```sql
+CREATE TABLE folders (
+    id          uuid PRIMARY KEY,
+    name        text NOT NULL,
+    created_by  uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+    deleted_at  timestamptz
+);
+
+CREATE TABLE folder_members (
+    folder_id uuid NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+    user_id   uuid NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
+    role      text NOT NULL CHECK (role IN ('admin','member','viewer')),
+    added_at  timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (folder_id, user_id)
+);
+-- Dibaca di setiap pemeriksaan izin, dari arah pengguna.
+CREATE INDEX folder_members_user_id_idx ON folder_members (user_id);
+
 CREATE TABLE projects (
     id          uuid PRIMARY KEY,
     key         text NOT NULL,
     name        text NOT NULL,
     description text NOT NULL DEFAULT '',
     card_seq    bigint NOT NULL DEFAULT 0,     -- penomoran PM-142, dikunci FOR UPDATE
+    -- NULL berarti project berdiri sendiri (ADR-0011). ON DELETE SET NULL:
+    -- menghapus folder tidak boleh membuang pekerjaan yang ada di dalamnya.
+    folder_id   uuid REFERENCES folders(id) ON DELETE SET NULL,
     created_by  uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     created_at  timestamptz NOT NULL DEFAULT now(),
     updated_at  timestamptz NOT NULL DEFAULT now(),
@@ -188,6 +218,9 @@ CREATE TABLE project_members (
     PRIMARY KEY (project_id, user_id)
 );
 CREATE INDEX project_members_user_id_idx ON project_members (user_id);
+-- Menemukan isi sebuah folder, dan menjawab "project ini di folder mana"
+-- pada setiap pemeriksaan izin.
+CREATE INDEX projects_folder_id_idx ON projects (folder_id) WHERE folder_id IS NOT NULL;
 
 CREATE TABLE statuses (
     id         uuid PRIMARY KEY,
