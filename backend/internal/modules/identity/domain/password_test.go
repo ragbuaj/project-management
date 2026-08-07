@@ -76,7 +76,7 @@ func TestTheSamePasswordHashesDifferentlyEveryTime(t *testing.T) {
 func TestTheStoredHashCarriesTheParametersItWasMadeWith(t *testing.T) {
 	t.Parallel()
 
-	encoded, err := identitydom.HashPassword("whatever")
+	encoded, err := identitydom.HashPassword("whatever passes the policy")
 	if err != nil {
 		t.Fatalf("HashPassword: %v", err)
 	}
@@ -207,5 +207,108 @@ func TestAHashFromALowerCostStillVerifiesAndAsksToBeRewritten(t *testing.T) {
 	// rather than rejected.
 	if err := identitydom.VerifyPassword(older, password); !errors.Is(err, identitydom.ErrPasswordMismatch) {
 		t.Errorf("VerifyPassword against a weaker hash = %v, want ErrPasswordMismatch", err)
+	}
+}
+
+// The whole of ADR-0009's requirement on the user: length, counted in
+// characters. Nothing about upper case, digits, or symbols — those produce
+// Password1! and no extra entropy.
+func TestThePolicyIsLengthAndNothingElse(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		password string
+		want     error
+	}{
+		{"one character short", strings.Repeat("a", identitydom.MinPasswordLength-1), identitydom.ErrPasswordTooShort},
+		{"exactly at the minimum", strings.Repeat("a", identitydom.MinPasswordLength), nil},
+		{"empty", "", identitydom.ErrPasswordTooShort},
+		{"long enough and all lower case", "correcthorsebattery", nil},
+		{"long enough and all digits", "123456789012", nil},
+		{"a passphrase with spaces", "kuda benar baterai steples", nil},
+		{"emoji", strings.Repeat("🔐", identitydom.MinPasswordLength), nil},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			if _, err := identitydom.ValidatePassword(c.password); !errors.Is(err, c.want) {
+				t.Errorf("ValidatePassword(%q) = %v, want %v", c.password, err, c.want)
+			}
+		})
+	}
+}
+
+// A person choosing a password counts characters. Counting bytes would let a
+// short CJK password through as though it were long.
+func TestLengthIsCountedInCharactersNotBytes(t *testing.T) {
+	t.Parallel()
+
+	// Eight characters, twenty-four bytes.
+	short := "日本語パスワード"
+
+	if n := len(short); n < identitydom.MinPasswordLength {
+		t.Fatalf("this test needs a password whose byte count passes the minimum, got %d bytes", n)
+	}
+
+	if _, err := identitydom.ValidatePassword(short); !errors.Is(err, identitydom.ErrPasswordTooShort) {
+		t.Errorf("ValidatePassword(%q) = %v, want ErrPasswordTooShort — it is 8 characters", short, err)
+	}
+}
+
+// The reason normalisation happens before hashing at all. The same password
+// typed on a different keyboard arrives as different bytes; without NFKC its
+// owner is locked out of half their devices with no explanation.
+func TestTheSamePasswordInTwoUnicodeFormsIsOnePassword(t *testing.T) {
+	t.Parallel()
+
+	// "café au lait, s'il" — the first spells é as one rune, the second as e
+	// followed by a combining acute accent. They look identical on screen.
+	const (
+		composed   = "caf\u00e9 au lait, s'il"
+		decomposed = "cafe\u0301 au lait, s'il"
+	)
+
+	if composed == decomposed {
+		t.Fatal("this test needs two spellings that differ as bytes")
+	}
+
+	encoded, err := identitydom.HashPassword(composed)
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+
+	if err := identitydom.VerifyPassword(encoded, decomposed); err != nil {
+		t.Errorf("the decomposed spelling does not verify against the composed one: %v", err)
+	}
+
+	// And the other way round, since either can be the one that was registered.
+	encoded, err = identitydom.HashPassword(decomposed)
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+
+	if err := identitydom.VerifyPassword(encoded, composed); err != nil {
+		t.Errorf("the composed spelling does not verify against the decomposed one: %v", err)
+	}
+}
+
+// A password over the limit is refused, never quietly cut down. A truncated
+// password is a different password from the one that was typed.
+func TestAnOverLongPasswordIsRefusedRatherThanTruncated(t *testing.T) {
+	t.Parallel()
+
+	long := strings.Repeat("a", identitydom.MaxPasswordLength+1)
+
+	if _, err := identitydom.ValidatePassword(long); !errors.Is(err, identitydom.ErrPasswordTooLong) {
+		t.Fatalf("ValidatePassword of %d bytes = %v, want ErrPasswordTooLong", len(long), err)
+	}
+
+	// The limit is far above the 64 characters ADR-0009 asks for, so a
+	// password nobody would call short must still be accepted.
+	if _, err := identitydom.ValidatePassword(strings.Repeat("a", 64)); err != nil {
+		t.Errorf("ValidatePassword of 64 characters = %v, want no error", err)
 	}
 }

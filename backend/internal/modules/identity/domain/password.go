@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/text/unicode/norm"
 )
 
 // Argon2id, as rules/40-security.md and ADR-0005 require. The parameters are
@@ -34,11 +36,29 @@ const (
 	keyLength  = 32
 )
 
-// MaxPasswordLength bounds what will be hashed. Argon2 has no input limit of
-// its own, so without this a request body could ask this server to hash a
-// megabyte, and rules/40-security.md is clear that every external input is
-// bounded before use.
-const MaxPasswordLength = 1024
+// The length policy, from ADR-0009.
+//
+// Length is the only requirement that adds real entropy, which is why it is
+// the only one here: no composition rules, no character classes, nothing that
+// turns a password into Password1!.
+const (
+	// MinPasswordLength counts characters, not bytes, and is counted after
+	// normalisation. OWASP ASVS puts the practical minimum here; NIST allows 8
+	// and recommends 15 or more.
+	MinPasswordLength = 12
+
+	// MaxPasswordLength bounds what will be hashed, in bytes. ADR-0009 asks
+	// for a maximum far above 64 characters — this is comfortably that, since
+	// even 64 four-byte runes are 256 bytes.
+	//
+	// A password over the limit is refused, never truncated. A silently
+	// truncated password is a different password from the one that was typed,
+	// and its owner will never learn why the other device cannot sign in.
+	//
+	// Argon2 has no input limit of its own, so without a bound here a request
+	// body could ask this server to hash a megabyte.
+	MaxPasswordLength = 1024
+)
 
 var (
 	// ErrPasswordMismatch means the password does not match the hash. The
@@ -47,8 +67,13 @@ var (
 	// the login endpoint becomes an account enumerator.
 	ErrPasswordMismatch = errors.New("password does not match")
 
-	// ErrPasswordTooLong means the input exceeds MaxPasswordLength.
+	// ErrPasswordTooLong means the input exceeds MaxPasswordLength. It is
+	// returned rather than the password being cut down to fit.
 	ErrPasswordTooLong = errors.New("password is longer than the limit")
+
+	// ErrPasswordTooShort means the input is under MinPasswordLength
+	// characters.
+	ErrPasswordTooShort = errors.New("password is shorter than the minimum")
 
 	// ErrHashUnreadable means the stored hash is not one this package wrote.
 	// It is a corrupted row or a hash from another application, never a wrong
@@ -56,6 +81,38 @@ var (
 	// login, the other is an operator's problem.
 	ErrHashUnreadable = errors.New("stored password hash is unreadable")
 )
+
+// ValidatePassword applies the length policy and returns the password in the
+// form that will be hashed.
+//
+// Normalisation is NFKC and it happens here, before anything counts characters
+// or hashes bytes. Without it the same password typed on a different keyboard
+// — a composed é against an e with a combining accent — is a different byte
+// string, and its owner is locked out of half their devices with no
+// explanation. It is also why the choice cannot be revisited later: changing
+// it stops every stored hash from matching.
+//
+// Nothing else is checked. ADR-0009 rules out composition requirements, and
+// the breach blocklist is a network call that belongs to the service rather
+// than to a pure function.
+func ValidatePassword(plain string) (string, error) {
+	normalised := norm.NFKC.String(plain)
+
+	// Bytes, because this is the bound that protects the server: it is what
+	// stops a request body from asking for a megabyte to be hashed.
+	if len(normalised) > MaxPasswordLength {
+		return "", ErrPasswordTooLong
+	}
+
+	// Characters, because this is the bound that protects the account, and a
+	// person choosing a password counts characters rather than bytes. Counting
+	// bytes here would let "日本語パスワード" through at three characters.
+	if utf8.RuneCountInString(normalised) < MinPasswordLength {
+		return "", ErrPasswordTooShort
+	}
+
+	return normalised, nil
+}
 
 // HashPassword returns the encoded hash to store in users.password_hash.
 //
@@ -65,9 +122,12 @@ var (
 // verifying with their own parameters, and NeedsRehash reports which ones are
 // worth rewriting at the next successful login.
 func HashPassword(plain string) (string, error) {
-	if len(plain) > MaxPasswordLength {
-		return "", ErrPasswordTooLong
+	normalised, err := ValidatePassword(plain)
+	if err != nil {
+		return "", err
 	}
+
+	plain = normalised
 
 	salt := make([]byte, saltLength)
 	if _, err := rand.Read(salt); err != nil {
@@ -90,6 +150,13 @@ func VerifyPassword(encoded, plain string) error {
 	if err != nil {
 		return err
 	}
+
+	// Normalised the same way it was when it was hashed, or the same password
+	// typed on a different keyboard produces different bytes and fails. The
+	// minimum length is deliberately not enforced here: a password stored
+	// before the policy changed still has to let its owner in, and a guess
+	// that is too short is a failed login rather than a policy error.
+	plain = norm.NFKC.String(plain)
 
 	if len(plain) > MaxPasswordLength {
 		return ErrPasswordMismatch
