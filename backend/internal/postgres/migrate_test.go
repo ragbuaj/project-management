@@ -2,7 +2,10 @@ package postgres_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -10,6 +13,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	// Registers the pgx driver for the database/sql handle this file opens to
+	// create and drop the scratch database.
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/ragbuaj/project-management/backend/internal/postgres"
 )
@@ -81,6 +88,89 @@ func TestMigrateIsIdempotent(t *testing.T) {
 			t.Fatalf("Migrate() run %d: %v", i+1, err)
 		}
 	}
+}
+
+// Production applies migrations on start-up, so a rolling deploy runs this
+// from several processes at once against an empty database. So does `go test
+// ./...`, which is how this was found: two test packages migrating in parallel
+// both read an empty version table and then raced to CREATE TABLE, and the
+// loser failed with a duplicate key on pg_type_typname_nsp_index — an error
+// that names a system catalog rather than the actual problem.
+//
+// A scratch database is created for this, because the shared one is already
+// migrated by the time any test runs and racing to do nothing proves nothing.
+func TestConcurrentMigrationsDoNotCollide(t *testing.T) {
+	url := testDatabaseURL(t)
+
+	admin, err := sql.Open("pgx", url)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+
+	// Unique per run so a leftover from a failed run cannot make this pass.
+	name := fmt.Sprintf("pm_concurrent_%d", time.Now().UnixNano())
+
+	// CREATE DATABASE cannot run inside a transaction, and the name cannot be
+	// a parameter. It is generated above from the clock, never from input.
+	if _, err := admin.ExecContext(t.Context(), `CREATE DATABASE `+name); err != nil {
+		_ = admin.Close()
+
+		t.Fatalf("create the scratch database: %v", err)
+	}
+
+	// Dropping and closing live in one cleanup, in that order. Closing admin
+	// with defer instead would run before this and leave the scratch database
+	// behind on every run.
+	t.Cleanup(func() {
+		if _, err := admin.ExecContext(context.Background(), `DROP DATABASE IF EXISTS `+name+` WITH (FORCE)`); err != nil {
+			t.Errorf("drop the scratch database %s: %v", name, err)
+		}
+
+		_ = admin.Close()
+	})
+
+	scratchURL, err := replaceDatabase(url, name)
+	if err != nil {
+		t.Fatalf("build the scratch URL: %v", err)
+	}
+
+	const racers = 4
+
+	errs := make(chan error, racers)
+
+	var start sync.WaitGroup
+
+	start.Add(1)
+
+	for range racers {
+		go func() {
+			// All four wait here so they arrive at the empty version table
+			// together, which is the moment the collision happened.
+			start.Wait()
+			errs <- postgres.Migrate(context.Background(), scratchURL)
+		}()
+	}
+
+	start.Done()
+
+	for range racers {
+		if err := <-errs; err != nil {
+			t.Errorf("concurrent Migrate(): %v", err)
+		}
+	}
+}
+
+// replaceDatabase points a connection string at another database on the same
+// server, leaving every other parameter alone.
+func replaceDatabase(rawURL, name string) (string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+
+	parsed.Path = "/" + name
+
+	return parsed.String(), nil
 }
 
 func TestMigrateCreatesTheIdentityTables(t *testing.T) {

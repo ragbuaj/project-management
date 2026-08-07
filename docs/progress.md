@@ -11,10 +11,10 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 
 ## Ringkasan
 
-**27 selesai · 0 sedang · 15 belum**
+**28 selesai · 0 sedang · 14 belum**
 
 Fase 0 punya **29 sub-langkah**: Langkah 9 dan 11 dipecah jadi tujuh PR atas
-permintaan pemilik. Dari 29 itu, **14 selesai dan 15 belum**. Ditambah 10 item
+permintaan pemilik. Dari 29 itu, **15 selesai dan 14 belum**. Ditambah 10 item
 gerbang dokumen dan 3 item perubahan cakupan, semuanya selesai.
 
 **Skema Fase 0 selesai.** Tujuh migration, 33 tabel, 5 view `*_live`, 57 test
@@ -28,8 +28,8 @@ Langkah 12–26.
 > basi: pemecahan Langkah 8–11 menambah tiga baris item, tapi totalnya tidak
 > ikut dihitung ulang.
 >
-> Rekonsiliasi ketiga ini dihitung ulang dari tabelnya, baris demi baris:
-> 17 baris `selesai` di tabel Fase 0 ditambah 10 baris gerbang dokumen = 27.
+> Rekonsiliasi ketiga dihitung ulang dari tabelnya, baris demi baris:
+> 18 baris `selesai` di tabel Fase 0 ditambah 10 baris gerbang dokumen = 28.
 > **Angka ringkasan tetap tidak layak dipercaya tanpa menghitung ulang
 > tabelnya.** Tabelnya yang benar; ringkasan hanya kenyamanan.
 
@@ -71,7 +71,7 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | 11a | Migration `00005` isi kartu: comments, checklists, links, card_labels | selesai | Rencana Fase 0 §11 | PR E/#15 (`1572586`) |
 | 11b | Migration `00006` notifikasi, waktu, filter, automation | selesai | Rencana Fase 0 §11 | PR F/#16 (`ba87e12`) |
 | 11c | Migration `00007` token, share link, VCS | selesai | Rencana Fase 0 §11 | PR G/#17 (`ee404a7`) |
-| 12 | `sqlc` + view `*_live` untuk soft delete | belum | Rencana Fase 0 §12 | — |
+| 12 | `sqlc` + view `*_live` untuk soft delete | selesai | Rencana Fase 0 §12 | PR #19 |
 | 13 | `internal/httpx` — request ID, log, recovery, bentuk error, rate limit | belum | Rencana Fase 0 §13 | — |
 | 14 | `internal/fracdex` + property test | belum | Rencana Fase 0 §14, ADR-0003 | — |
 | 15 | `modules/identity` — Argon2id, sesi, login/logout/me | belum | Rencana Fase 0 §15, ADR-0005 | — |

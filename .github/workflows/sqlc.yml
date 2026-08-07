@@ -1,0 +1,60 @@
+name: sqlc
+
+# Sama seperti squawk dan kontrak API: disaring di level workflow supaya runner
+# tidak dinyalakan untuk PR yang tidak menyentuh query, skema, atau hasil
+# generate-nya sama sekali.
+on:
+  pull_request:
+    paths:
+      - "backend/db/migrations/**"
+      - "backend/sqlc.yaml"
+      - "backend/internal/modules/**/repository/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sqlc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diff:
+    name: sqlc — hasil generate sinkron dengan skema
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      # Versi disebut eksplisit dan sama dengan yang tercatat di
+      # docs/environments.md. sqlc yang berbeda versi menghasilkan berkas yang
+      # berbeda, dan job ini membandingkan berkas.
+      #
+      # Dipasang lewat go install, bukan lewat action pihak ketiga atau unduhan
+      # tarball: modul Go diverifikasi lewat checksum database, jadi tidak ada
+      # hash yang perlu ditulis tangan di berkas ini dan tidak ada toolchain
+      # tambahan yang harus dipercaya.
+      #
+      # GOTOOLCHAIN=auto hanya di langkah ini. sqlc 1.31.1 menuntut Go 1.26,
+      # sedangkan repo ini memakai 1.25.12; `setup-go` mengunci GOTOOLCHAIN ke
+      # `local`, sehingga go install gagal. Yang dilonggarkan adalah toolchain
+      # untuk **membangun alat**, bukan untuk membangun aplikasi — job Go tetap
+      # membaca versinya dari go.mod, dan itu tetap satu-satunya sumber versi
+      # Go untuk biner yang dikirim.
+      - name: Pasang sqlc
+        env:
+          GOTOOLCHAIN: auto
+        run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
+
+      # Menangkap dua kegagalan yang senyap: query yang diubah tanpa generate
+      # ulang, dan migration yang mengubah tipe kolom sehingga kode hasil
+      # generate tidak lagi cocok dengan skemanya. Keduanya baru terlihat saat
+      # runtime kalau tidak diperiksa di sini.
+      - name: Hasil generate harus mutakhir
+        run: sqlc diff

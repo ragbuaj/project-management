@@ -1,0 +1,48 @@
+version: "2"
+
+# One entry per module (ADR-0008 §5). The schema is shared and read from the
+# migrations, which are central and global; only the queries and the output
+# directory are per module.
+#
+# A module that queries another module's tables is a layering violation this
+# file cannot catch — that boundary is held by ADR-0008 §4 and by review.
+sql:
+  - engine: postgresql
+    schema: db/migrations
+    queries: internal/modules/identity/repository/queries
+    gen:
+      go:
+        package: repository
+        out: internal/modules/identity/repository
+        # pgx/v5 rather than database/sql: the pool is already pgx and the
+        # generated code has to take the same transaction handle the service
+        # passes down (internal/postgres).
+        sql_package: pgx/v5
+        # Named parameter structs once a query takes more than one argument.
+        # Positional arguments are how the wrong value ends up in the right
+        # place after a column is added.
+        emit_prepared_queries: false
+        emit_interface: true
+        emit_empty_slices: true
+        # Without this, every module's models.go carries a struct for all 33
+        # tables in the shared schema — the identity module would ship a Card,
+        # a Sprint, and a VcsConnection it never queries. That is precisely the
+        # duplication ADR-0008 §4 exists to prevent, and it would make the
+        # module boundary invisible in the generated code.
+        omit_unused_structs: true
+        # A NULL column becomes *T rather than sql.NullT. The zero value of
+        # sql.NullString is indistinguishable from an empty string that was
+        # actually stored, and that difference matters for every nullable
+        # column in this schema.
+        emit_pointers_for_null_types: true
+        overrides:
+          # uuid as a string rather than a driver-specific type: the id crosses
+          # into the domain layer, which imports nothing from this repository
+          # (ADR-0008 §3).
+          - db_type: "uuid"
+            go_type: "string"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              type: "string"
+              pointer: true
