@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `ee404a7`.
+**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `16b6a19`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -14,12 +14,16 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 **29 selesai · 0 sedang · 13 belum**
 
 Fase 0 punya **29 sub-langkah**: Langkah 9 dan 11 dipecah jadi tujuh PR atas
-permintaan pemilik. Dari 29 itu, **15 selesai dan 14 belum**. Ditambah 10 item
+permintaan pemilik. Dari 29 itu, **16 selesai dan 13 belum**. Ditambah 10 item
 gerbang dokumen dan 3 item perubahan cakupan, semuanya selesai.
 
-**Skema Fase 0 selesai.** Tujuh migration, 33 tabel, 5 view `*_live`, 57 test
-di `internal/postgres`. Yang tersisa di Fase 0 adalah kode yang memakainya:
-Langkah 12–26.
+**Skema dan fondasi backend selesai.** Tujuh migration, 33 tabel, 5 view
+`*_live`, `sqlc` terpasang dengan gerbang CI-nya, dan `internal/httpx` lengkap —
+request ID, log terstruktur, recovery, bentuk error, rate limit. 110 test di
+`backend/internal`.
+
+Yang tersisa di Fase 0 dimulai dari Langkah 14 (`internal/fracdex`), lalu
+identitas, otorisasi, dan seluruh frontend.
 
 > **Angka ringkasan pernah dua kali salah, dan keduanya dicatat di sini.**
 >
@@ -28,10 +32,17 @@ Langkah 12–26.
 > basi: pemecahan Langkah 8–11 menambah tiga baris item, tapi totalnya tidak
 > ikut dihitung ulang.
 >
-> Rekonsiliasi ketiga dihitung ulang dari tabelnya, baris demi baris:
-> 18 baris `selesai` di tabel Fase 0 ditambah 10 baris gerbang dokumen = 28.
+> Rekonsiliasi keempat dihitung ulang secara mekanis, bukan dengan mata:
+> 19 baris `selesai` di tabel Fase 0 ditambah 10 baris gerbang dokumen = 29,
+> melawan 13 yang belum. Paragraf di atasnya ternyata sudah basi lagi — ia
+> masih menulis `15 selesai dan 14 belum` untuk 29 sub-langkah.
+>
 > **Angka ringkasan tetap tidak layak dipercaya tanpa menghitung ulang
 > tabelnya.** Tabelnya yang benar; ringkasan hanya kenyamanan.
+>
+> Satu jebakan untuk siapa pun yang menghitungnya dengan skrip: baris 23 memuat
+> pipe ter-escape (`--size=small\|full`), yang memecah kolomnya kalau barisnya
+> dibelah dengan `|` begitu saja.
 
 ## Gerbang dokumen (sebelum baris kode pertama)
 
