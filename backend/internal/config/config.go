@@ -37,12 +37,22 @@ const (
 	WriteTimeout    = 30 * time.Second
 	IdleTimeout     = 60 * time.Second
 	ShutdownTimeout = 20 * time.Second
+
+	// ReadyTimeout bounds the whole /readyz probe. It has to stay well under
+	// whatever interval the orchestrator polls at, or a slow database turns
+	// into piled-up probes rather than one honest failure.
+	ReadyTimeout = 3 * time.Second
 )
 
 const (
 	defaultHTTPAddr        = ":8080"
 	defaultLogLevel        = "info"
 	defaultMaxRequestBytes = 1 << 20 // 1 MiB
+
+	defaultDatabaseMaxConns = 20
+	// PostgreSQL runs one process per connection, so an accidental extra zero
+	// here takes the database down rather than making it faster.
+	maxDatabaseMaxConns = 1000
 )
 
 // Config holds everything read at start-up.
@@ -57,6 +67,9 @@ type Config struct {
 	HTTPAddr        string
 	LogLevel        slog.Level
 	MaxRequestBytes int64
+
+	DatabaseURL      string
+	DatabaseMaxConns int32
 }
 
 // Lookup reads one environment variable. os.LookupEnv satisfies it. It is
@@ -115,11 +128,49 @@ func Load(lookup Lookup) (Config, error) {
 		cfg.MaxRequestBytes = n
 	}
 
+	if rawDB := value(lookup, "DATABASE_URL", ""); rawDB == "" {
+		problems = append(problems, missing("DATABASE_URL"))
+	} else if err := validateDatabaseURL(rawDB); err != nil {
+		problems = append(problems, err)
+	} else {
+		cfg.DatabaseURL = rawDB
+	}
+
+	rawConns := value(lookup, "DATABASE_MAX_CONNS", strconv.Itoa(defaultDatabaseMaxConns))
+
+	switch n, err := strconv.ParseInt(rawConns, 10, 32); {
+	case err != nil, n <= 0, n > maxDatabaseMaxConns:
+		problems = append(problems, invalid("DATABASE_MAX_CONNS", rawConns,
+			fmt.Sprintf("expected an integer between 1 and %d", maxDatabaseMaxConns)))
+	default:
+		cfg.DatabaseMaxConns = int32(n)
+	}
+
 	if len(problems) > 0 {
 		return Config{}, fmt.Errorf("%w: %w", ErrInvalid, errors.Join(problems...))
 	}
 
 	return cfg, nil
+}
+
+// validateDatabaseURL checks the shape without ever echoing the value, and
+// without wrapping the parse error either: a PostgreSQL URL carries the
+// password, and url.Parse embeds the input in its own error message.
+func validateDatabaseURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return invalidSecret("DATABASE_URL", "expected a postgres:// URL")
+	}
+
+	if u.Scheme != "postgres" && u.Scheme != "postgresql" {
+		return invalidSecret("DATABASE_URL", "expected the postgres:// or postgresql:// scheme")
+	}
+
+	if u.Host == "" {
+		return invalidSecret("DATABASE_URL", "expected a host")
+	}
+
+	return nil
 }
 
 // parseBaseURL accepts the public origin and rejects shapes that would produce
@@ -170,4 +221,10 @@ func missing(key string) error {
 // Report only the variable name for those.
 func invalid(key, got, want string) error {
 	return fmt.Errorf("%s is invalid: got %q, %s", key, got, want)
+}
+
+// invalidSecret is the counterpart of invalid for variables that carry a
+// secret. It names the variable and what was expected, and never the value.
+func invalidSecret(key, want string) error {
+	return fmt.Errorf("%s is invalid: %s", key, want)
 }

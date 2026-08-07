@@ -7,7 +7,7 @@ Anda sendiri, enam bulan lagi, di mesin yang berbeda.
 
 | Alat | Versi | Catatan |
 |---|---|---|
-| Go | 1.25.12 | [ADR-0001](adr/0001-stack-react-go-postgresql.md) menyebut 1.24; versi minor Go bukan keputusan yang butuh ADR. Patch ini menutup 9 kerentanan pustaka standar yang ditemukan `govulncheck` — lihat `go.mod` dan `GO_VERSION` di `ci.yml`, keduanya harus naik bersamaan |
+| Go | 1.25.12 | [ADR-0001](adr/0001-stack-react-go-postgresql.md) menyebut 1.24; versi minor Go bukan keputusan yang butuh ADR. Patch ini menutup 9 kerentanan pustaka standar yang ditemukan `govulncheck`. **`backend/go.mod` adalah satu-satunya sumbernya** — CI membacanya lewat `go-version-file`, jadi cukup naikkan di satu tempat |
 | Node | 24.x | |
 | pnpm | 10.x | Package manager frontend. Diaktifkan lewat `corepack enable` |
 | PostgreSQL | 18 | [ADR-0007](adr/0007-postgresql-18.md) |
@@ -37,6 +37,12 @@ mekanisme itu, staging sementara dibuat untuk perubahan itu saja lalu dibuang.
 
 Aplikasi **gagal saat start** kalau ada variabel wajib yang kosong atau tidak
 valid, bukan gagal nanti saat variabel itu dipakai pertama kali.
+
+Tabel di bawah adalah daftar lengkap untuk sistem yang sudah jadi. Sebuah
+variabel baru benar-benar **ditegakkan** saat kode yang membacanya sudah ada —
+lihat `.env.example`, yang isinya selalu sama dengan yang berlaku hari ini.
+Memaksa orang mengisi nilai untuk sesuatu yang belum dibaca hanya melahirkan
+isian asal-asalan, dan isian asal-asalan sampai ke produksi.
 
 ### Inti
 
@@ -107,8 +113,27 @@ disimpan terenkripsi di `vcs_connections`, bukan di environment.
 
 ```bash
 cp .env.example .env
-docker compose up -d postgres redis mailpit
+docker compose up -d
 ```
+
+`compose.yml` ada di akar repo, bukan di `deploy/`, supaya `docker compose`
+menemukannya bersama `.env` tanpa flag tambahan. `deploy/` menyimpan artefak
+produksi — Dockerfile, `compose.prod.yml`, Caddyfile — dan lahir di PR 9.
+
+> **Kalau PostgreSQL sudah terpasang di mesin Anda**, port 5432 akan bentrok —
+> dan bentroknya senyap. Windows mengizinkan satu proses mengikat `::` dan
+> proses lain `0.0.0.0` di port yang sama, jadi container ikut menyala tapi
+> yang menjawab koneksi Anda adalah PostgreSQL lokal, dengan galat "password
+> authentication failed" yang menyesatkan. Pindahkan port container lewat
+> `.env`:
+>
+> ```bash
+> POSTGRES_PORT=55432
+> REDIS_PORT=56379
+> ```
+>
+> lalu sesuaikan `DATABASE_URL`. Jangan matikan PostgreSQL lokal Anda untuk
+> ini — memindahkan port container jauh lebih murah dibatalkan.
 
 ```bash
 cd backend && go run ./cmd/migrate up && go run ./cmd/seed --size=small
