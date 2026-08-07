@@ -151,7 +151,7 @@ func (s *SlidingWindow) Allow(ctx context.Context, key string) (allowed bool, re
 	for _, t := range s.tiers {
 		window := t.Window.Milliseconds()
 
-		keys = append(keys, hitsKey(window, key), sequenceKey(window, key))
+		keys = append(keys, hitsKey(rateLimitNamespace, window, key), sequenceKey(rateLimitNamespace, window, key))
 		argv = append(argv, window, int64(t.Limit))
 	}
 
@@ -172,33 +172,41 @@ func (s *SlidingWindow) Allow(ctx context.Context, key string) (allowed bool, re
 	// as "try again now", which turns a refusal into a tight retry loop against
 	// a Redis that is already the thing under strain.
 	if res[1] <= 0 {
-		return false, s.longestWindow(), nil
+		return false, longestWindow(s.tiers), nil
 	}
 
 	return false, time.Duration(res[1]) * time.Millisecond, nil
 }
 
-func (s *SlidingWindow) longestWindow() time.Duration {
+func longestWindow(tiers []Tier) time.Duration {
 	var longest time.Duration
 
-	for _, t := range s.tiers {
+	for _, t := range tiers {
 		longest = max(longest, t.Window)
 	}
 
 	return longest
 }
 
-// The two prefixes keep these keys apart from cache and pub/sub in the same
-// database, so that clearing one kind never resets the others. They also keep
-// the sequence counter out of the sorted set's own namespace, and each tier out
-// of the others'. Every discriminator goes in front of the caller's key rather
-// than after it: a suffix would collide with a caller whose key happens to end
-// in it, and callers build keys out of addresses and identifiers this package
-// never sees.
-func hitsKey(window int64, key string) string {
-	return "ratelimit:hits:" + strconv.FormatInt(window, 10) + ":" + key
+// The namespaces keep these keys apart from cache and pub/sub in the same
+// database, so that clearing one kind never resets the others, and they keep
+// the rate limiter's counters apart from the failure counter's — the two answer
+// different questions about the same account and must not share a total.
+//
+// Inside a namespace the prefixes keep the sequence counter out of the sorted
+// set's own space, and each tier out of the others'. Every discriminator goes in
+// front of the caller's key rather than after it: a suffix would collide with a
+// caller whose key happens to end in it, and callers build keys out of addresses
+// and identifiers this package never sees.
+const (
+	rateLimitNamespace = "ratelimit"
+	failureNamespace   = "failures"
+)
+
+func hitsKey(namespace string, window int64, key string) string {
+	return namespace + ":hits:" + strconv.FormatInt(window, 10) + ":" + key
 }
 
-func sequenceKey(window int64, key string) string {
-	return "ratelimit:seq:" + strconv.FormatInt(window, 10) + ":" + key
+func sequenceKey(namespace string, window int64, key string) string {
+	return namespace + ":seq:" + strconv.FormatInt(window, 10) + ":" + key
 }
