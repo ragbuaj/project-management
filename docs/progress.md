@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `216672e`.
+**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `f438d97`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -11,16 +11,23 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 
 ## Ringkasan
 
-**20 selesai · 0 sedang · 19 belum**
+**22 selesai · 0 sedang · 20 belum**
 
-Fase 0 dari 26 langkah: **7 selesai, 19 belum**. Ditambah tiga item di luar
-rencana yang lahir dari perubahan cakupan, semuanya selesai.
+Fase 0 kini punya **29 sub-langkah**, bukan 26: Langkah 9 dan 11 dipecah jadi
+tujuh PR atas permintaan pemilik. Dari 29 itu, **9 selesai dan 20 belum**.
+Ditambah 10 item gerbang dokumen dan 3 item perubahan cakupan, semuanya
+selesai.
 
-> Rekonsiliasi 2026-08-07 menemukan angka versi sebelumnya (`12 · 4 · 21`)
-> **salah hitung** — bukan salah status. Sepuluh item gerbang dokumen dan lima
-> langkah Fase 0 sudah selesai saat itu, yang berarti 15, bukan 12. Dicatat di
-> sini alih-alih diperbaiki diam-diam: kalau angka ringkasan pernah salah
-> sekali, ia layak dicurigai lain kali.
+> **Angka ringkasan sudah dua kali salah, dan keduanya dicatat di sini.**
+>
+> Rekonsiliasi pertama menemukan `12 · 4 · 21` salah hitung — seharusnya 15
+> selesai, bukan 12. Rekonsiliasi kedua ini menemukan `20 · 0 · 19` juga sudah
+> basi: pemecahan Langkah 8–11 menambah tiga baris item, tapi totalnya tidak
+> ikut dihitung ulang.
+>
+> Dua kali dari dua kali. Kesimpulannya jelas — **angka ringkasan di berkas ini
+> tidak layak dipercaya tanpa menghitung ulang tabelnya.** Tabelnya yang benar;
+> ringkasan hanya kenyamanan.
 
 ## Gerbang dokumen (sebelum baris kode pertama)
 
@@ -53,8 +60,8 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | — | Penyaringan CI per-path + `go-version-file` | selesai | Perubahan cakupan, lihat bawah | PR #6 |
 | — | Catatan batas platform GitHub | selesai | Perubahan cakupan, lihat bawah | PR #7 (`216672e`) |
 | — | `progress.md` + log sesi | selesai | Skill `progress-tracking` | PR #8 (`ac65098`) |
-| 8 | goose + `cmd/migrate` + migration `00001` identitas | **sedang** | Rencana Fase 0 §8 | PR A, belum merge |
-| 9a | Migration `00002` project, member, status, board, column, label | belum | Rencana Fase 0 §9 | PR B |
+| 8 | goose + `cmd/migrate` + migration `00001` identitas | selesai | Rencana Fase 0 §8 | PR B/#10 (`c9a5ea1`) |
+| 9a | Migration `00002` project, member, status, board, column, label | selesai | Rencana Fase 0 §9 | PR B/#11 (`f438d97`) |
 | 9b | Migration `00003` sprints, cards, FK komposit | belum | Rencana Fase 0 §9 | PR C |
 | 10 | Migration `00004` `activity_events` berpartisi + `outbox` | belum | Rencana Fase 0 §10 | PR D |
 | 11a | Migration `00005` isi kartu: comments, checklists, links, card_labels | belum | Rencana Fase 0 §11 | PR E |
@@ -91,8 +98,10 @@ menuntut cgo.
 | Pertanyaan | Sejak | Memblokir |
 |---|---|---|
 | Peran default untuk rekan yang diundang: `admin` (saran saya) atau pindahkan sebagian aksi dari `admin` ke `member`? | 2026-08-06 | Fase 2, bukan Fase 0 |
-| PR di atas 400 baris (PR #5 dan #6 masing-masing ~790) — dipecah atau tidak? Ditanya dua kali, belum dijawab | 2026-08-06 | Tidak memblokir, tapi Langkah 11 (migration 28 tabel) akan besar juga |
 | Ketersediaan branch protection di paket akun ini — perlu dicek di `Settings → Rules` | 2026-08-06 | Tidak memblokir |
+
+Pertanyaan ukuran PR sudah terjawab pada 2026-08-07: Langkah 8–11 dipecah jadi
+tujuh PR, masing-masing di bawah 250 baris yang ditulis tangan.
 
 ## Di luar cakupan (non-goals)
 
