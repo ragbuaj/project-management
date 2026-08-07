@@ -9,6 +9,25 @@ import (
 )
 
 type Querier interface {
+	// Stamping the invitation as used, and the only thing that makes it single-use.
+	//
+	// The conditions are in the WHERE rather than checked in Go beforehand. Two
+	// clicks on the same link arriving together would both read an open invitation
+	// and both go on to create an account; here the second one updates no rows and
+	// the caller can see that it lost. The account is created in the same
+	// transaction as this statement, so a redemption that loses creates nothing.
+	AcceptInvitation(ctx context.Context, id string) (int64, error)
+	// Invitations. Like sessions, the token itself never reaches this file: what is
+	// stored and what is looked up is its SHA-256, computed in the domain layer
+	// (ADR-0005). And like sessions, token_hash is never selected — nothing outside
+	// redemption may see it, and one stray column in a list is a credential sitting
+	// in a JSON body.
+	//
+	// invitations.role holds the ACCOUNT role the invitee will be created with
+	// (ADR-0012). The CHECK on the column accepts only maintainer, contributor, and
+	// viewer: there is exactly one owner and that account is the first one, not an
+	// invited one.
+	CreateInvitation(ctx context.Context, arg CreateInvitationParams) (CreateInvitationRow, error)
 	// Sessions. The token itself never reaches this file: what is stored and what
 	// is looked up is its SHA-256, computed in the domain layer (ADR-0005).
 	CreateSession(ctx context.Context, arg CreateSessionParams) (CreateSessionRow, error)
@@ -29,6 +48,22 @@ type Querier interface {
 	// be unable to reach it. docs/authorization.md keeps sessions to their owner
 	// even for `owner`.
 	DeleteSessionForUser(ctx context.Context, arg DeleteSessionForUserParams) (int64, error)
+	// Re-inviting somebody. The previous link stops working the moment a new one is
+	// sent, rather than two links for one address both staying live -- an address
+	// that was invited twice by mistake should not end up with a spare account
+	// creator sitting in an old e-mail.
+	//
+	// lower(email) matches invitations_email_idx, which is partial on
+	// accepted_at IS NULL and exists for exactly this lookup. Accepted rows are left
+	// alone: they are the record that an account was created from this invitation,
+	// and rewriting their deadline would rewrite that history.
+	ExpireOpenInvitationsForEmail(ctx context.Context, email string) (int64, error)
+	// Redemption. Expiry and acceptance are deliberately not filtered here, for the
+	// same reason GetSessionByTokenHash does not filter expiry: the caller has to
+	// tell an expired link from one that never existed for the log, and a WHERE
+	// clause that hides the row makes the two indistinguishable. What the caller
+	// must not do is let that difference reach the client — see Invitation.IsUsable.
+	GetInvitationByTokenHash(ctx context.Context, tokenHash []byte) (GetInvitationByTokenHashRow, error)
 	// Every authenticated request runs this, which is why it also returns the
 	// user: the alternative is two round trips per request for data that is
 	// always needed together.
