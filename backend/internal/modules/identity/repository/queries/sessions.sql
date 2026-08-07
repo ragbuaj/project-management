@@ -30,6 +30,7 @@ SELECT s.id,
        s.expires_at,
        u.email,
        u.name,
+       u.timezone,
        u.is_owner
 FROM sessions s
 JOIN users_live u ON u.id = s.user_id

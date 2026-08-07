@@ -81,6 +81,7 @@ SELECT s.id,
        s.expires_at,
        u.email,
        u.name,
+       u.timezone,
        u.is_owner
 FROM sessions s
 JOIN users_live u ON u.id = s.user_id
@@ -95,6 +96,7 @@ type GetSessionByTokenHashRow struct {
 	ExpiresAt  pgtype.Timestamptz
 	Email      string
 	Name       string
+	Timezone   string
 	IsOwner    bool
 }
 
@@ -120,6 +122,7 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (
 		&i.ExpiresAt,
 		&i.Email,
 		&i.Name,
+		&i.Timezone,
 		&i.IsOwner,
 	)
 	return i, err

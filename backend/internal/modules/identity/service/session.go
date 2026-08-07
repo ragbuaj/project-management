@@ -96,6 +96,7 @@ type Authenticated struct {
 	UserID    string
 	Email     string
 	Name      string
+	Timezone  string
 	IsOwner   bool
 }
 
@@ -146,6 +147,7 @@ func (s *Sessions) Authenticate(ctx context.Context, token string) (Authenticate
 		UserID:    session.UserID,
 		Email:     row.Email,
 		Name:      row.Name,
+		Timezone:  row.Timezone,
 		IsOwner:   row.IsOwner,
 	}, nil
 }
