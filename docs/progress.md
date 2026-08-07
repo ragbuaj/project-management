@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `2c7d057`.
+**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `64d3f4b`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -32,16 +32,21 @@ satu pemeriksaan keanggotaan, dengan pengecualian owner hidup di satu tempat.
 Yang tersisa dimulai dari Langkah 18 (undangan, reset password, daftar sesi),
 lalu seluruh frontend.
 
-**Langkah 18 sudah melewati tiga dari delapan potongannya.** Potongan a
+**Langkah 18 sudah melewati empat dari delapan potongannya.** Potongan a
 menentukan alamat klien di belakang proxy; potongan b mengganti fixed window
 dengan sliding window berlapis; potongan c memasang tiga ember kegagalan —
-akun, alamat, jaringan — di depan `/auth/login`.
+akun, alamat, jaringan — di depan `/auth/login`; potongan d memberi setiap akun
+daftar sesinya sendiri dan dua cara mengakhirinya.
 
 **`/auth/login` berbatas sejak PR #73**, dan itu menutup lubang tertua di
 repo ini: `httpx.RateLimit` ada sejak Langkah 13 dan tidak pernah dipasang,
-padahal ADR-0005 dan ADR-0010 mewajibkannya. Yang tersisa di Langkah 18 adalah
-potongan d sampai h: daftar sesi, `internal/mail`, undangan, reset password,
-dan blocklist HIBP.
+padahal ADR-0005 dan ADR-0010 mewajibkannya.
+
+Yang tersisa di Langkah 18 adalah potongan e sampai h, dan **keempatnya butuh
+SMTP**: `internal/mail`, undangan, reset password, dan blocklist HIBP. Mailpit
+sudah ada di compose dan menutup seluruh pengembangan lokal, jadi tidak ada yang
+memblokir — tapi mulai dari sini tidak ada lagi potongan yang berdiri sendiri
+tanpa pengirim surel.
 
 **Yang belum punya implementasi:** antarmuka `authz.Memberships` sengaja tanpa
 implementasi sampai modul project lahir di Fase 1 — `project_members` dan
@@ -137,6 +142,18 @@ selesai lalu diam-diam menggantinya adalah cara catatan ini berbohong.
 > berturut-turut: tiga PR ter-merge (#71, #72, #73) dan ketiganya di dalam
 > Langkah 18. Paragraf di atas tabel ikut diperiksa kali ini — dengan skrip yang
 > sama, bukan dengan mata — dan ia masih benar.
+>
+> Rekonsiliasi keenam belas (2026-08-08, `64d3f4b`): angka yang sama lagi —
+> **38 · 1 · 8**, tidak berubah untuk ketiga kalinya berturut-turut. Dua PR
+> ter-merge (#75, #76) dan keduanya menutup potongan d di dalam Langkah 18.
+>
+> **Tiga rekonsiliasi berturut-turut tanpa satu angka pun bergerak bukan tanda
+> berkas ini rusak; ia tanda satu baris tabel terlalu kasar untuk pekerjaan
+> sebesar Langkah 18.** Delapan potongannya sudah punya tabel sendiri, dan di
+> situlah gerakannya terbaca: empat dari delapan selesai. Yang perlu dijaga
+> adalah kolom bukti di baris Langkah 18 tetap menyebut potongan mana yang
+> sudah masuk — kalau ia hanya menulis `sedang`, tiga sesi kerja akan hilang
+> dari catatan ini tanpa ada yang bisa menemukannya.
 
 ## Gerbang dokumen (sebelum baris kode pertama)
 
@@ -187,7 +204,7 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | — | Migration `00009` & `00010` — peran akun, dan pembuangan `is_owner` | selesai | Perubahan cakupan, lihat bawah; [ADR-0012](adr/0012-peran-akun-dan-akses-owner.md) | PR #59, #60, #63 (`98c5b4d`) |
 | — | Modul identity membawa peran akun, bukan `is_owner` | selesai | ADR-0012 | PR #61 |
 | 17 | `internal/authz` + table-driven test **tujuh** pola | selesai | Rencana Fase 0 §17, [authorization.md](authorization.md), ADR-0012 | PR #53, #54, #55, lalu **ditulis ulang** di #62 (`94d2303`) |
-| 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | sedang | Rencana Fase 0 §18, ADR-0009, ADR-0010 | 3 dari 8 potongan — a: #65 · b: #67, #68 · c: #69, #71, #72, #73 |
+| 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | sedang | Rencana Fase 0 §18, ADR-0009, ADR-0010 | 4 dari 8 potongan — a: #65 · b: #67, #68 · c: #69, #71, #72, #73 · d: #75, #76 |
 | 19 | **Gerbang manusia:** arah desain tertulis | belum | Rencana Fase 0 §19, `rules/15-ui-design.md` §2 | — |
 | 20 | Scaffold Vite + shadcn + token | belum | Rencana Fase 0 §20 | — |
 | 21 | Generate tipe dari OpenAPI + layar login empat state | belum | Rencana Fase 0 §21 | — |
@@ -280,7 +297,7 @@ menutup lubang rate limit lebih dulu.
 | a | `httpx.ClientIP` — proxy tepercaya, agregasi IPv6 /64 | selesai, PR #65 |
 | b | Sliding window berlapis di `internal/redis`, menggantikan `FixedWindow` yang tak terpakai | selesai, PR #67 (menggeser) & #68 (berlapis) |
 | c | `/auth/login` berbatas: ember akun + IP + prefiks, gagal tertutup | selesai — #69 primitif, #71 kunci jaringan, #72 kebijakan, #73 pemasangan |
-| d | Daftar & cabut sesi + kontrak | belum |
+| d | Daftar & cabut sesi + kontrak | selesai — #75 query & kebijakan, #76 endpoint & kontrak |
 | e | `internal/mail` — pengirim SMTP, dan penangkap untuk test | belum |
 | f | Undangan: owner membuat akun pegawai | belum |
 | g | Reset password | belum |
@@ -295,9 +312,19 @@ Yang perlu diingat saat melanjutkan:
   menit dan 2000 / hari. Tabel ADR-0010 hanya punya baris per akun dan per IP.
   Ini yang pertama layak diperdebatkan kalau ada yang terkunci tanpa sebab; ia
   ada di `DefaultLoginLimits` dan ditandai di komentarnya.
-- **Potongan berikutnya (d–h) belum disentuh sama sekali.** Potongan g (reset
-  password) butuh `LoginGuard` lagi, bukan `httpx.RateLimit`: ia memverifikasi
-  rahasia, jadi yang dihitung kegagalan.
+- **Potongan e sampai h semuanya butuh SMTP**, jadi urutannya dimulai dari
+  `internal/mail`. Potongan g (reset password) butuh `LoginGuard` lagi, bukan
+  `httpx.RateLimit`: ia memverifikasi rahasia, jadi yang dihitung kegagalan.
+- **Kepemilikan sesi ditegakkan di `WHERE`, bukan di Go.** `DeleteSessionForUser`
+  memuat `AND user_id`, dan test-nya berjalan terhadap PostgreSQL sungguhan
+  dengan dua akun. Endpoint berikutnya yang menyentuh data milik seseorang harus
+  memakai pola yang sama — pemeriksaan kepemilikan di Go bisa hilang dalam satu
+  refactor tanpa satu test pun berubah warna.
+- **Fixture yang berbohong tentang tipe kolom baru ketahuan saat kolomnya
+  dipakai.** Fixture route membagikan id sesi `"session-1"` sejak Langkah 15,
+  padahal kolomnya `uuid`. Ia tidak pernah salah sampai ada kode yang memvalidasi
+  bentuknya. Kalau sebuah stub memalsukan sebuah id, palsukan dengan bentuk yang
+  benar.
 - Potongan e sampai h butuh SMTP. Mailpit sudah ada di compose dan menutup
   seluruh pengembangan lokal; penyedia produksinya belum dipilih dan baru
   menggigit di Langkah 25.
@@ -426,6 +453,8 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-07 | Cookie CSRF bernama `__Host-csrf`, bukan `csrf` seperti tertulis di ADR-0005 dan kontrak. ADR-0005 disusulkan pada 2026-08-07 supaya dokumennya tidak menyimpang dari kodenya | Double-submit hanya rahasia selama tidak ada pihak lain yang bisa menulis cookie-nya. Subdomain saudara yang menulis `csrf` biasa memegang kedua belahnya sekaligus; cookie `__Host-` bersifat host-only menurut definisinya, jadi ia tidak bisa. Ini kelemahan bawaan double-submit, dan awalan itu yang menutupnya | ya — lewat merge PR #47, yang deskripsinya menjelaskan penyimpangan ini |
 | 2026-08-07 | Cookie CSRF diterbitkan middleware pada permintaan aman mana pun, bukan oleh handler login seperti tersirat di kontrak | Kalau penerbitannya milik satu endpoint, endpoint yang mengubah data bergantung pada endpoint lain yang ingat menerbitkannya — lubang yang sama dengan "lupa memasang middleware", dari sisi sebaliknya. Akibat baiknya `POST /auth/login` ikut terlindungi dari login lintas-situs | ya — lewat merge PR #47 |
 | 2026-08-07 | Rantai middleware diangkat dari `run()` menjadi `apiHandler()` di `cmd/api` | ADR-0005 menaruh pemeriksaan CSRF di router justru supaya tidak ada route yang bisa ditambahkan tanpanya. Rantai yang hanya dirakit di dalam `run()` tidak bisa ditanyai apakah itu masih benar; sekarang ada dua test yang menanyakannya | ya — lewat merge PR #47 |
+| 2026-08-08 | **`DELETE /me/sessions` menyisakan sesi yang sedang dipakai** | Terbaca mengejutkan dari URL-nya, jadi alasannya ditulis di kontrak dan bukan hanya di kode: `POST /auth/logout` sudah mengakhiri sesi yang sedang dipakai, jadi pemanggil yang ingin keluar dari mana-mana termasuk dari sini memanggil keduanya. Satu endpoint yang mengeluarkan pemanggilnya sambil masih berutang jawaban adalah setengah yang lebih buruk dari pasangan itu | ya — lewat merge PR #76, yang deskripsinya menjelaskan pilihan ini |
+| 2026-08-08 | Potongan d dipecah jadi dua PR (#75 query & kebijakan, #76 endpoint & kontrak) | Utuh, ia lebih dari 1.100 baris. #75 sendiri 676 baris — di atas target 400 — tapi 117 di antaranya keluaran `sqlc generate` dan ~380 test; memecah SQL dari service akan meninggalkan query yang tidak dipanggil siapa pun | ya |
 | 2026-08-08 | **Angka ember jaringan (300 / 10 menit, 2000 / hari) dipilih di luar ADR-0010** | Tabel ADR-0010 hanya punya baris per akun dan per IP, sedangkan potongan c meminta tiga ember. Angkanya sepuluh kali jatah per-alamat pada jendela yang sama: cukup longgar sampai satu kantor atau kampus di belakang satu /24 tidak menyentuhnya, cukup ketat sampai sebaran yang menjaga tiap alamat di bawah 30 tetap tertangkap. **Ditandai di kodenya sebagai angka yang belum disepakati** | belum — dipilih sendiri, menunggu jawaban pemilik |
 | 2026-08-08 | Potongan c dipecah jadi empat PR (#69 primitif, #71 kunci jaringan, #72 kebijakan, #73 pemasangan) | Alasan yang sama dengan Langkah 13–16. Utuh, ia akan jauh di atas 400 baris | ya |
 | 2026-08-08 | `httpx.writeRateLimited` di-export jadi `WriteRateLimited` | Endpoint login menolak dari dalam handler-nya, bukan dari middleware, karena ADR-0010 menghitung percobaan yang **gagal** dan itu baru diketahui setelah password diperiksa. Ia tetap harus menghasilkan status, body, dan pembulatan `Retry-After` yang sama dengan yang ditolak middleware; satu fungsi bersama yang menjaminnya | ya — lewat merge PR #73 |
