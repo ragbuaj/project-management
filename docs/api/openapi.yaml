@@ -100,8 +100,14 @@ paths:
     post:
       tags: [auth]
       summary: Keluar dan mematikan sesi di sisi server
+      security: []
       responses:
-        '204': { description: Sesi dihapus }
+        '204':
+          description: |
+            Sesi dihapus dan cookie dikosongkan. Dijawab sama untuk permintaan
+            yang tidak membawa sesi sama sekali: pemanggilnya sama-sama berakhir
+            dalam keadaan keluar, dan membedakannya hanya memberi tahu apakah
+            cookie yang dipegangnya nyata.
 
   /me:
     get:

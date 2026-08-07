@@ -304,3 +304,83 @@ func TestALoginWhoseSessionCannotBeWrittenIsNotASuccess(t *testing.T) {
 		t.Error("a failed login still set a cookie")
 	}
 }
+
+func TestLoggingOutRevokesTheSessionAndClearsTheCookie(t *testing.T) {
+	t.Parallel()
+
+	s := newStore(t)
+	auth := newAuth(t, s)
+
+	login := postLogin(t, auth, `{"email":"member@example.test","password":"kuda benar baterai steples"}`)
+	token := sessionCookie(t, login).Value
+
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/logout", nil)
+	r.AddCookie(&http.Cookie{Name: identityhttp.SessionCookieName, Value: token})
+
+	w := httptest.NewRecorder()
+	auth.Logout(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status %d, want 204", w.Code)
+	}
+
+	if len(s.deleted) != 1 {
+		t.Errorf("logout deleted %d sessions, want 1", len(s.deleted))
+	}
+
+	cleared := sessionCookie(t, w)
+	if cleared.Value != "" || cleared.MaxAge >= 0 {
+		t.Errorf("the cookie was not cleared: value %q, max-age %d", cleared.Value, cleared.MaxAge)
+	}
+}
+
+// Logging out without a session is what a stale tab does. It must end in the
+// same place as a real logout rather than in an error.
+func TestLoggingOutWithoutASessionStillSucceeds(t *testing.T) {
+	t.Parallel()
+
+	s := newStore(t)
+
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/logout", nil)
+	w := httptest.NewRecorder()
+
+	newAuth(t, s).Logout(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status %d, want 204", w.Code)
+	}
+
+	if len(s.deleted) != 0 {
+		t.Error("a logout with no cookie still reached the database")
+	}
+
+	// The cookie is cleared even when there was nothing to revoke, so a stale
+	// one stops being sent on the next request.
+	if cleared := sessionCookie(t, w); cleared.Value != "" {
+		t.Errorf("the cookie was not cleared: %q", cleared.Value)
+	}
+}
+
+// The one answer logout must never give: saying the session is gone when it is
+// still live.
+func TestALogoutThatCannotDeleteTheSessionSaysSo(t *testing.T) {
+	t.Parallel()
+
+	s := newStore(t)
+	auth := newAuth(t, s)
+
+	login := postLogin(t, auth, `{"email":"member@example.test","password":"kuda benar baterai steples"}`)
+	token := sessionCookie(t, login).Value
+
+	s.failLogout = pgx.ErrTxClosed
+
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/logout", nil)
+	r.AddCookie(&http.Cookie{Name: identityhttp.SessionCookieName, Value: token})
+
+	w := httptest.NewRecorder()
+	auth.Logout(w, r)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status %d, want 500 — the session is still there", w.Code)
+	}
+}
