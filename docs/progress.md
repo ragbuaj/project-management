@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `16b6a19`.
+**Terakhir direkonsiliasi:** 2026-08-07 terhadap `main` di commit `81bd24c`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -11,19 +11,19 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 
 ## Ringkasan
 
-**29 selesai · 0 sedang · 13 belum**
+**31 selesai · 0 sedang · 13 belum**
 
-Fase 0 punya **29 sub-langkah**: Langkah 9 dan 11 dipecah jadi tujuh PR atas
-permintaan pemilik. Dari 29 itu, **16 selesai dan 13 belum**. Ditambah 10 item
-gerbang dokumen dan 3 item perubahan cakupan, semuanya selesai.
+Fase 0 punya **31 sub-langkah**: Langkah 9, 11, dan 15 dipecah jadi beberapa PR
+atas permintaan pemilik. Dari 31 itu, **18 selesai dan 13 belum**. Ditambah 10
+item gerbang dokumen dan 3 item perubahan cakupan, semuanya selesai.
 
 **Skema dan fondasi backend selesai.** Tujuh migration, 33 tabel, 5 view
-`*_live`, `sqlc` terpasang dengan gerbang CI-nya, dan `internal/httpx` lengkap —
-request ID, log terstruktur, recovery, bentuk error, rate limit. 110 test di
-`backend/internal`.
+`*_live`, `sqlc` terpasang dengan gerbang CI-nya, `internal/httpx` lengkap —
+request ID, log terstruktur, recovery, bentuk error, rate limit — dan
+`internal/fracdex` sebagai penghasil urutan kartu (ADR-0003).
 
-Yang tersisa di Fase 0 dimulai dari Langkah 14 (`internal/fracdex`), lalu
-identitas, otorisasi, dan seluruh frontend.
+Yang tersisa di Fase 0 dimulai dari Langkah 15b (sesi), lalu CSRF, otorisasi,
+dan seluruh frontend.
 
 > **Angka ringkasan pernah dua kali salah, dan keduanya dicatat di sini.**
 >
@@ -43,6 +43,10 @@ identitas, otorisasi, dan seluruh frontend.
 > Satu jebakan untuk siapa pun yang menghitungnya dengan skrip: baris 23 memuat
 > pipe ter-escape (`--size=small\|full`), yang memecah kolomnya kalau barisnya
 > dibelah dengan `|` begitu saja.
+>
+> Rekonsiliasi kelima (2026-08-07, `81bd24c`) dihitung dengan skrip yang
+> menangani jebakan itu: 34 baris di tabel Fase 0 — 21 `selesai`, 13 `belum` —
+> ditambah 10 gerbang dokumen, semuanya `selesai`. Jadi 31 · 0 · 13.
 
 ## Gerbang dokumen (sebelum baris kode pertama)
 
@@ -84,8 +88,10 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | 11c | Migration `00007` token, share link, VCS | selesai | Rencana Fase 0 §11 | PR G/#17 (`ee404a7`) |
 | 12 | `sqlc` + view `*_live` untuk soft delete | selesai | Rencana Fase 0 §12 | PR #19 |
 | 13 | `internal/httpx` — request ID, log, recovery, bentuk error, rate limit | selesai | Rencana Fase 0 §13 | PR #20, #22, #23, #24 |
-| 14 | `internal/fracdex` + property test | belum | Rencana Fase 0 §14, ADR-0003 | — |
-| 15 | `modules/identity` — Argon2id, sesi, login/logout/me | belum | Rencana Fase 0 §15, ADR-0005 | — |
+| 14 | `internal/fracdex` + property test | selesai | Rencana Fase 0 §14, ADR-0003 | PR #26, #27, #28 (`90207d6`) |
+| 15a | `identity/domain` — password Argon2id | selesai | Rencana Fase 0 §15, ADR-0005 | PR #29 (`81bd24c`) |
+| 15b | `identity` — terbitkan, baca, dan cabut sesi | belum | Rencana Fase 0 §15, ADR-0005 | — |
+| 15c | `identity` — `/login`, `/logout`, `/me` | belum | Rencana Fase 0 §15, ADR-0005 | — |
 | 16 | Middleware CSRF double-submit | belum | Rencana Fase 0 §16, ADR-0005 | — |
 | 17 | `internal/authz` + table-driven test empat pola | belum | Rencana Fase 0 §17, [authorization.md](authorization.md) | — |
 | 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | belum | Rencana Fase 0 §18 | — |
@@ -116,6 +122,7 @@ menuntut cgo.
 | Pasang branch protection di `main`? Saat ini **tidak ada sama sekali** — lihat catatan di bawah | 2026-08-07 | Tidak memblokir |
 | Berapa angka rate limit untuk login, reset password, dan pencarian? Mekanismenya sudah ada dan berparameter; angkanya belum ditetapkan di dokumen mana pun | 2026-08-07 | Langkah 18 |
 | Bagaimana IP klien ditentukan di belakang Caddy? Mempercayai `X-Forwarded-For` tanpa syarat berarti siapa pun bisa memalsukannya; tidak mempercayainya berarti seluruh pengguna terhitung sebagai satu IP dan saling menjatuhkan rate limit | 2026-08-07 | Langkah 18 dan 25 |
+| Panjang password minimum dan kebijakan lainnya. Hashing sudah ada dan membatasi panjang **maksimum** 1 KiB; batas minimum adalah keputusan produk, bukan kripto, jadi ia belum ditulis di mana pun | 2026-08-07 | Langkah 15c |
 
 Pertanyaan branch protection sudah terjawab sebagiannya, dan jawabannya tidak
 menyenangkan: **`main` tidak punya proteksi apa pun.** Ini ditemukan bukan lewat
@@ -162,6 +169,10 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-07 | Langkah 13 dipecah jadi empat PR (#20, #22, #23, #24) | Ditulis sekaligus jadi 873 baris, di atas dua PR yang ditolak pemilik pada 2026-08-07 | ya |
 | 2026-08-07 | `REDIS_URL` jadi variabel **wajib** | Redis yang tidak terjangkau ditangani saat runtime; Redis yang tidak pernah dikonfigurasi adalah deployment yang belum selesai. Deployment lama akan menolak start sampai variabel ini disetel | ya — lewat merge PR #23 |
 | 2026-08-07 | Paket `internal/redis` ditambahkan, tidak ada di pohon `architecture.md` | Simetris dengan `internal/postgres`, dan Fase 8 (realtime) serta cache akan memakainya juga. `architecture.md` diperbarui | ya — lewat merge PR #23 |
+| 2026-08-07 | Langkah 14 dipecah jadi tiga PR (#26 format & validator, #27 generator, #28 property test) | Ditulis sekaligus jadi 637 baris, di atas target 400 di `rules/50-git-workflow.md` dan di atas dua PR yang sudah ditolak pemilik | ya |
+| 2026-08-07 | `fracdex.Between` menyimpang dari paket `fractional-indexing` di satu sudut: saat penyisipan di depan menyentuh dasar ruang integer, paket JS mengembalikan string yang ditolak validatornya sendiri; `Between` membagi pecahan supaya keluarannya selalu sah | Sudut itu butuh 62^26 penyisipan di depan untuk dicapai, jadi keduanya sepakat pada setiap kunci yang akan benar-benar dihitung salah satunya. Alternatifnya adalah menyimpan cacat yang membuat postcondition "keluaran selalu lolos `Validate`" tidak bisa dinyatakan | ya — lewat merge PR #27 |
+| 2026-08-07 | Langkah 15 dipecah jadi tiga (15a password, 15b sesi, 15c endpoint) | Alasan yang sama dengan Langkah 13 dan 14 | ya |
+| 2026-08-07 | `golang.org/x/crypto` jadi dependency runtime langsung | Argon2id diwajibkan ADR-0005 dan `rules/40-security.md`, dan pustaka standar Go tidak punya implementasinya. Turunannya `golang.org/x/sys` sudah ada di `go.sum`. `govulncheck` bersih | ya — ditanyakan dan disetujui pemilik pada 2026-08-07 |
 
 ## Cara memperbarui berkas ini
 
