@@ -3,6 +3,9 @@
 **Status:** Accepted
 **Tanggal:** 2026-08-06
 **Pengambil keputusan:** pemilik proyek
+**Direvisi:** 2026-08-07 — bagian CSRF, menyusul implementasinya di PR #46 dan
+#47: nama cookie menjadi `__Host-csrf`, penerbitnya adalah middleware, dan
+nilai yang bentuknya salah diganti
 
 ## Konteks
 
@@ -71,9 +74,30 @@ mendarat di halaman login walau sudah masuk.
 
 Karena `SameSite=Lax` tidak melindungi permintaan `POST` lintas-situs pada
 semua peramban lama, ditambahkan pertahanan kedua: **double-submit token**.
-Cookie `csrf` (tanpa `HttpOnly`) harus cocok dengan header `X-CSRF-Token` pada
-setiap `POST`, `PATCH`, `PUT`, `DELETE`. Middleware menolak yang tidak cocok
-dengan `403`.
+Cookie `__Host-csrf` (tanpa `HttpOnly`) harus cocok dengan header
+`X-CSRF-Token` pada setiap `POST`, `PATCH`, `PUT`, `DELETE`. Middleware menolak
+yang tidak cocok dengan `403`.
+
+Awalan `__Host-` di sini bukan kehati-hatian tambahan, melainkan bagian yang
+menanggung beban. Double-submit hanya rahasia selama tidak ada pihak lain yang
+bisa **menulis** cookie-nya: subdomain saudara yang menulis cookie `csrf` biasa
+akan memegang kedua belahnya sekaligus, dan pemeriksaannya lolos. Cookie
+`__Host-` bersifat host-only menurut definisinya — peramban menolak yang
+menyebut `Domain` — sehingga subdomain saudara tidak bisa menyetelnya. Ini
+kelemahan bawaan double-submit, dan awalan itu yang menutupnya.
+
+Cookie diterbitkan **middleware** pada permintaan aman mana pun yang datang
+tanpa membawanya, bukan oleh handler login. Kalau penerbitannya milik satu
+endpoint, endpoint yang mengubah data bergantung pada endpoint lain yang ingat
+menerbitkannya lebih dulu — lubang yang sama dengan "lupa memasang
+middleware", hanya dari sisi sebaliknya. Akibat baiknya `POST /auth/login`
+ikut terlindungi: login lintas-situs memaksa korban bekerja di akun penyerang.
+
+Nilai yang bentuknya bukan terbitan server ini **diganti**, bukan dipercaya.
+Itu bukan pemeriksaan keamanan — pasangan dibandingkan dengan dirinya sendiri,
+jadi nilai asing yang bentuknya benar tetap cocok kalau klien menyalinnya; yang
+mencegahnya jadi serangan tetap awalan `__Host-`. Gunanya: tanpa penggantian,
+satu cookie rusak membuat peramban tersebut gagal selamanya.
 
 Permintaan yang membawa header `Authorization: Bearer` **dikecualikan** dari
 pemeriksaan CSRF — token bukan kredensial ambien, jadi tidak ada yang bisa
