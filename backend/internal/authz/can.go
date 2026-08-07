@@ -115,9 +115,22 @@ var rules = map[Action]rule{
 // instead of as one that works for everybody.
 func Can(caller Caller, action Action, role Role) bool {
 	r, known := rules[action]
+	if !known {
+		return false
+	}
 
+	return decide(caller, r, role)
+}
+
+// decide reads one rule. It is separate from the lookup so that the properties
+// which matter most about a rule — that an empty one grants nothing, that
+// forbidden beats a rank that would otherwise allow — can be tested against a
+// rule value instead of against a row temporarily pushed into the shared
+// table. Doing the latter was a data race: every other test here runs in
+// parallel, and they all read that map.
+func decide(caller Caller, r rule, role Role) bool {
 	switch {
-	case !known, r.forbidden:
+	case r.forbidden:
 		return false
 	case r.anySignedIn:
 		return true
