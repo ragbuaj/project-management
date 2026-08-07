@@ -55,6 +55,9 @@ membuktikan view-nya masih sepadan; ia otomatis mencakup tabel yang belum ada.
 | Baris pertama setiap berkas | `SET lock_timeout = '5s';` dan `SET statement_timeout = '5min';` | Tanpa `lock_timeout`, migration mengantre di belakang query panjang dan semua yang datang sesudahnya mengantre di belakang migration. Satu laporan lambat menghentikan seluruh database |
 | Indeks pada tabel yang dibuat di berkas yang sama | `-- squawk-ignore require-concurrent-index-creation` | Belum ada baris dan belum ada sesi lain, dan `CONCURRENTLY` mustahil di dalam transaksi |
 | Indeks pada tabel yang **sudah ada** | `-- +goose NO TRANSACTION` + `CREATE INDEX CONCURRENTLY`, di berkas tersendiri | Di sinilah `require-concurrent-index-creation` berguna, dan ia tetap menyala — lihat `.squawk.toml` |
+| Constraint `UNIQUE` | Dideklarasikan **di dalam `CREATE TABLE`**, bukan lewat `ALTER TABLE ... ADD CONSTRAINT` | `ALTER TABLE` mengambil `ACCESS EXCLUSIVE` lock dan membangun indeksnya sambil menahan lock itu — memblokir baca **dan** tulis. Di dalam `CREATE TABLE` tidak ada yang bisa dikunci |
+| Menambah FK ke tabel yang sudah ada | `ADD CONSTRAINT ... NOT VALID` lalu `VALIDATE CONSTRAINT` | `NOT VALID` melewati pemindaian baris lama dengan lock ringan; `VALIDATE` memeriksanya tanpa memblokir tulis |
+| Letak `-- squawk-ignore` | Tepat di atas **baris yang dilaporkan**, bukan di atas pernyataannya | Untuk temuan tingkat kolom, pragma di atas `CREATE TABLE` tidak berpengaruh — ia harus menempel pada baris kolomnya |
 
 ## ERD — inti
 
