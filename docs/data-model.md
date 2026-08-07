@@ -173,13 +173,15 @@ Folder dan pewarisan keanggotaannya ditetapkan
 berisi project, tidak berisi folder lain.
 
 ```sql
+-- Tanpa deleted_at, jadi tanpa view folders_live. Folder tidak memiliki isi
+-- apa pun sendiri: menghapusnya melepaskan project, bukan membawanya serta,
+-- sehingga tidak ada yang perlu dilindungi tong sampah.
 CREATE TABLE folders (
     id          uuid PRIMARY KEY,
     name        text NOT NULL,
     created_by  uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     created_at  timestamptz NOT NULL DEFAULT now(),
-    updated_at  timestamptz NOT NULL DEFAULT now(),
-    deleted_at  timestamptz
+    updated_at  timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE folder_members (
