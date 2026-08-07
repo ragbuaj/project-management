@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `98c5b4d`.
+**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `46c9c04`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -11,7 +11,7 @@ disetujui pada 2026-08-06. Setiap item menaut kembali ke sumbernya.
 
 ## Ringkasan
 
-**38 selesai · 0 sedang · 9 belum**
+**38 selesai · 1 sedang · 8 belum**
 
 Fase 0 punya **31 sub-langkah**: Langkah 9, 11, dan 15 dipecah jadi beberapa PR
 atas permintaan pemilik. Dari 31 itu, **22 selesai dan 9 belum**. Ditambah 10
@@ -95,6 +95,11 @@ selesai lalu diam-diam menggantinya adalah cara catatan ini berbohong.
 >
 > Rekonsiliasi kedua belas (2026-08-08, `98c5b4d`): dua baris bertambah untuk
 > pekerjaan ADR-0012 — 37 baris, 28 `selesai`, 9 `belum`. Jadi 38 · 0 · 9.
+>
+> Rekonsiliasi ketiga belas (2026-08-08, `46c9c04`): 37 baris, 28 `selesai`,
+> 1 `sedang`, 8 `belum`. Jadi 38 · 1 · 8. Langkah 18 dimulai dan **berhenti di
+> tengah** — statusnya `sedang`, bukan `belum`, dan bagian yang sudah masuk
+> disebutkan di kolom buktinya.
 
 ## Gerbang dokumen (sebelum baris kode pertama)
 
@@ -145,7 +150,7 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | — | Migration `00009` & `00010` — peran akun, dan pembuangan `is_owner` | selesai | Perubahan cakupan, lihat bawah; [ADR-0012](adr/0012-peran-akun-dan-akses-owner.md) | PR #59, #60, #63 (`98c5b4d`) |
 | — | Modul identity membawa peran akun, bukan `is_owner` | selesai | ADR-0012 | PR #61 |
 | 17 | `internal/authz` + table-driven test **tujuh** pola | selesai | Rencana Fase 0 §17, [authorization.md](authorization.md), ADR-0012 | PR #53, #54, #55, lalu **ditulis ulang** di #62 (`94d2303`) |
-| 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | belum | Rencana Fase 0 §18 | — |
+| 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | sedang | Rencana Fase 0 §18, ADR-0009, ADR-0010 | 1 dari 8 potongan — PR #65 |
 | 19 | **Gerbang manusia:** arah desain tertulis | belum | Rencana Fase 0 §19, `rules/15-ui-design.md` §2 | — |
 | 20 | Scaffold Vite + shadcn + token | belum | Rencana Fase 0 §20 | — |
 | 21 | Generate tipe dari OpenAPI + layar login empat state | belum | Rencana Fase 0 §21 | — |
@@ -180,6 +185,11 @@ yang **mengubah cara kerja**, bukan sejarah.
   `go test ./...`. Migration `00008` lolos di database lokal dan gagal di
   database kosong; bedanya bukan isi skemanya, melainkan paket test yang
   bermigrasi bersamaan.
+- **`/auth/login` belum berbatas sama sekali.** `httpx.RateLimit` ada sejak
+  Langkah 13 tapi tidak pernah dipasang, dan tidak ada implementasi `Limiter`
+  yang dipakai — padahal ADR-0005 dan ADR-0010 mewajibkannya. Ini lubang di
+  kode yang **sudah ter-merge**, bukan pekerjaan yang belum dimulai, dan ia
+  ditutup oleh potongan b dan c Langkah 18.
 - **`oasdiff breaking` tidak menangkap penghapusan properti dari respons.**
   PR #61 menghapus `is_owner` dari `/me` dan `/auth/login` — perubahan yang
   merusak setiap klien yang membacanya — dan gerbangnya hijau. Ia menjaga sisi
@@ -207,6 +217,33 @@ yang **mengubah cara kerja**, bukan sejarah.
   sering membuat impor jadi tak terpakai; `go test` berhenti di build dan
   hasilnya terbaca seperti test yang lemah. Ini terjadi tiga kali dalam satu
   sesi sebelum polanya disadari.
+
+## Langkah 18, dipotong sebelum ditulis
+
+Delapan potongan, diputuskan pada 2026-08-08 sebelum baris pertamanya. Urutannya
+menutup lubang rate limit lebih dulu.
+
+| # | Isi | Status |
+|---|---|---|
+| a | `httpx.ClientIP` — proxy tepercaya, agregasi IPv6 /64 | selesai, PR #65 |
+| b | Sliding window berlapis di `internal/redis`, menggantikan `FixedWindow` yang tak terpakai | belum |
+| c | `/auth/login` berbatas: ember akun + IP + prefiks, gagal tertutup | belum |
+| d | Daftar & cabut sesi + kontrak | belum |
+| e | `internal/mail` — pengirim SMTP, dan penangkap untuk test | belum |
+| f | Undangan: owner membuat akun pegawai | belum |
+| g | Reset password | belum |
+| h | Blocklist HIBP dengan k-anonymity, bertimeout, gagal terbuka | belum |
+
+Yang perlu diingat saat melanjutkan:
+
+- **Undangan hanya untuk membuat akun baru.** Menambahkan orang yang sudah
+  punya akun ke folder atau project berlaku **langsung tanpa persetujuan**
+  (keputusan pemilik, 2026-08-08). `invitations.role` berisi peran **akun**.
+- `FixedWindow` di `internal/redis` adalah sisa dari sebelum ADR-0010. Ia tidak
+  dipakai siapa pun dan digantikan di potongan b, bukan ditambahi.
+- Potongan e sampai h butuh SMTP. Mailpit sudah ada di compose dan menutup
+  seluruh pengembangan lokal; penyedia produksinya belum dipilih dan baru
+  menggigit di Langkah 25.
 
 ## Penghalang
 
