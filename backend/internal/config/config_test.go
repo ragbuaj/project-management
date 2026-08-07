@@ -26,6 +26,7 @@ func valid() map[string]string {
 		"APP_ENV":      "local",
 		"APP_BASE_URL": "http://localhost:8080",
 		"DATABASE_URL": "postgres://pm:redacted-in-tests@localhost:5432/pm",
+		"REDIS_URL":    "redis://localhost:6379",
 	}
 }
 
@@ -229,6 +230,21 @@ func TestLoadInvalid(t *testing.T) {
 			env:  with(map[string]string{"DATABASE_URL": "postgres:///pm"}),
 			want: []string{"DATABASE_URL is invalid", "host"},
 		},
+		"REDIS_URL absent": {
+			env:  with(map[string]string{"REDIS_URL": ""}),
+			want: []string{"REDIS_URL is required"},
+		},
+		"REDIS_URL with the wrong scheme": {
+			env:  with(map[string]string{"REDIS_URL": "http://localhost:6379"}),
+			want: []string{"REDIS_URL is invalid", "redis://"},
+		},
+		// go-redis silently defaults a hostless URL to localhost:6379, so a
+		// production deployment would connect to nothing and look healthy.
+		// Refusing it here names the variable; refusing it later would not.
+		"REDIS_URL without a host": {
+			env:  with(map[string]string{"REDIS_URL": "redis://"}),
+			want: []string{"REDIS_URL is invalid", "host"},
+		},
 		"DATABASE_MAX_CONNS zero": {
 			env:  with(map[string]string{"DATABASE_MAX_CONNS": "0"}),
 			want: []string{"DATABASE_MAX_CONNS is invalid"},
@@ -293,6 +309,30 @@ func TestLoadNeverEchoesTheDatabasePassword(t *testing.T) {
 	}
 
 	if !strings.Contains(err.Error(), "DATABASE_URL is invalid") {
+		t.Errorf("the error message does not name the variable: %v", err)
+	}
+}
+
+// REDIS_URL carries a password too, and a Redis reachable from the internet
+// with a weak one is a well-known way in.
+func TestLoadNeverEchoesTheRedisPassword(t *testing.T) {
+	t.Parallel()
+
+	const password = "correct-horse-battery-staple"
+
+	broken := maps.Clone(valid())
+	broken["REDIS_URL"] = "amqp://pm:" + password + "@localhost:6379"
+
+	_, err := config.Load(lookupFrom(broken))
+	if err == nil {
+		t.Fatal("Load() = nil, want an error")
+	}
+
+	if strings.Contains(err.Error(), password) {
+		t.Fatalf("the error message leaks the password: %v", err)
+	}
+
+	if !strings.Contains(err.Error(), "REDIS_URL is invalid") {
 		t.Errorf("the error message does not name the variable: %v", err)
 	}
 }
