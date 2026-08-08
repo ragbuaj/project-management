@@ -75,6 +75,7 @@ Tiga batas yang paling rawan, berurutan menurut risiko: `member → api`
 | Kredensial dicoba paksa | Rate limit per akun **dan** per IP; Argon2id | 0 |
 | Enumerasi akun lewat login | Respons identik untuk email tidak terdaftar dan password salah | 0 |
 | Enumerasi akun lewat undangan / reset password | Respons identik apa pun hasilnya; pesan dikirim lewat email, bukan lewat respons API | 0 |
+| Enumerasi akun lewat **waktu jawab** reset password | **Belum ditutup — sisa risiko yang diterima.** Lihat di bawah | 0 |
 | Webhook palsu | Verifikasi signature **sebelum** body disentuh logika apa pun | 9 |
 | Sesi mantan rekan masih hidup | Mengeluarkan anggota mencabut seluruh sesi dan token miliknya | 2 |
 
@@ -143,6 +144,32 @@ Ditulis eksplisit supaya tidak terlihat seperti kelalaian.
 | Tidak ada enkripsi at-rest di tingkat kolom selain kredensial VCS | Disk VPS terenkripsi; ancaman akses fisik tidak dimodelkan |
 | Serangan rantai pasok pada dependensi | Dimitigasi (`govulncheck`, `pnpm audit`, lockfile di-commit), tidak dicegah |
 | Owner pada akhirnya bisa membaca project mana pun | Hanya lewat langkah yang tercatat dan memberi notifikasi. Perbedaan antara akses darurat dan akses diam-diam |
+| **Waktu jawab `POST /auth/password/reset` membocorkan apakah sebuah alamat punya akun** | Lihat di bawah |
+
+### Waktu jawab reset password
+
+`POST /auth/password/reset` menjawab `202` dengan body kosong apa pun
+hasilnya, dan itu menutup enumerasi lewat isi respons. Yang belum tertutup
+adalah **berapa lama respons itu datang**: alamat yang punya akun menjalankan
+satu perjalanan SMTP di dalam jalur permintaan, alamat yang tidak punya
+langsung menjawab. Selisihnya cukup besar untuk diukur dengan stopwatch.
+
+Diterima sekarang karena dua alternatifnya lebih buruk hari ini:
+
+- **Goroutine di proses API** membuat waktunya konstan, tapi surel bisa hilang
+  di setiap deploy — proses tidak menunggu goroutine sebelum berhenti, dan
+  tidak ada tempat mencatat yang gagal.
+- **Penundaan buatan** menyamakan waktu dengan menambah lambat untuk semua
+  orang, dan angkanya harus ditebak ulang setiap kali server surel berubah.
+
+**Yang menutupnya sudah ada di rencana:** pengiriman lewat `outbox`
+([ADR-0002](adr/0002-event-transport-outbox.md)) yang dikonsumsi `cmd/worker`
+(Langkah 24). Begitu worker itu ada, permintaan reset hanya menulis baris dan
+waktunya berhenti bergantung pada apakah ada yang perlu dikirimi.
+
+Sampai saat itu, yang membatasi dampaknya adalah rate limit: 3 per jam per
+akun dan 10 per jam per alamat IP ([ADR-0010](adr/0010-ip-klien-dan-rate-limit.md)),
+yang membuat pemindaian daftar alamat mahal — bukan mustahil.
 
 ## Kapan dokumen ini ditinjau ulang
 
