@@ -25,6 +25,11 @@ ORDER BY lower(name);
 -- The account role is chosen by whoever creates the account, never defaulted
 -- here: users.role has a DEFAULT, and relying on it would mean a caller that
 -- forgets to decide silently gets one (ADR-0012).
+--
+-- timezone is returned although it is not written, because it is the one column
+-- here the database chooses. Redeeming an invitation hands the new account
+-- straight back to the caller, and a row read back with an empty timezone would
+-- be this query reporting a value that is not what was stored.
 -- name: CreateUser :one
 INSERT INTO users (email, name, password_hash, role)
 VALUES (
@@ -33,7 +38,7 @@ VALUES (
     sqlc.arg(password_hash)::text,
     sqlc.arg(role)::text
 )
-RETURNING id, email, name, role, created_at;
+RETURNING id, email, name, timezone, role, created_at;
 
 -- Masking, not deleting: the account keeps its rows so that its cards and
 -- comments survive with an author (docs/data-model.md, retention). The address

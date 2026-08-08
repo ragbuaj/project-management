@@ -34,6 +34,11 @@ type Querier interface {
 	// The account role is chosen by whoever creates the account, never defaulted
 	// here: users.role has a DEFAULT, and relying on it would mean a caller that
 	// forgets to decide silently gets one (ADR-0012).
+	//
+	// timezone is returned although it is not written, because it is the one column
+	// here the database chooses. Redeeming an invitation hands the new account
+	// straight back to the caller, and a row read back with an empty timezone would
+	// be this query reporting a value that is not what was stored.
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
 	// Signing out everywhere else. The session making the request is kept, because
 	// the caller asked to end the others and an answer they cannot receive while
