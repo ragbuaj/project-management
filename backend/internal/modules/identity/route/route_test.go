@@ -15,6 +15,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/ragbuaj/project-management/backend/internal/httpx"
+
 	identitydom "github.com/ragbuaj/project-management/backend/internal/modules/identity/domain"
 	identityhttp "github.com/ragbuaj/project-management/backend/internal/modules/identity/handler"
 	identityrepo "github.com/ragbuaj/project-management/backend/internal/modules/identity/repository"
@@ -199,6 +201,14 @@ type fullStore interface {
 func newMux(t *testing.T, s fullStore) *http.ServeMux {
 	t.Helper()
 
+	return newMuxWith(t, s, func(next http.Handler) http.Handler { return next })
+}
+
+// newMuxWith is newMux with the invitation rate limit replaced, so a test can
+// see where in the chain it sits.
+func newMuxWith(t *testing.T, s fullStore, inviteLimit httpx.Middleware) *http.ServeMux {
+	t.Helper()
+
 	log := slog.New(slog.DiscardHandler)
 
 	credentials, err := identitysvc.NewCredentials(s, log)
@@ -215,7 +225,14 @@ func newMux(t *testing.T, s fullStore) *http.ServeMux {
 
 	mux := http.NewServeMux()
 	identityroute.Register(mux,
-		identityhttp.NewAuth(credentials, sessions, guard, nil, log), sessions, log)
+		identityhttp.NewAuth(credentials, sessions, guard, nil, log),
+		// No invitation service and no limit: these tests ask about routing and
+		// sessions. A nil service is safe because every test here stops at the
+		// guard, and the one that does not asserts exactly that.
+		identityhttp.NewInvitations(nil, log),
+		sessions,
+		inviteLimit,
+		log)
 
 	return mux
 }
@@ -711,5 +728,64 @@ func TestTheSessionEndpointsRefuseAnUnauthenticatedCaller(t *testing.T) {
 		if w.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s answered %d, want 401", tc.method, tc.path, w.Code)
 		}
+	}
+}
+
+// The invitation endpoint is mounted behind the session guard, and the guard is
+// what proves it: the service behind this route is nil in these tests, so a
+// request that got past the guard would panic rather than answer 401.
+func TestInvitingWithoutASessionIsRefusedBeforeTheHandler(t *testing.T) {
+	t.Parallel()
+
+	mux := newMux(t, newStore(t))
+
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/invitations",
+		strings.NewReader(`{"email":"budi@example.test","role":"viewer"}`))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, r)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", w.Code)
+	}
+}
+
+// The invitation limit is keyed by the calling account, so it has to sit
+// **inside** the session guard: outside, the context carries no caller, every
+// key would be empty, and the limit would count nothing while looking
+// installed. This asserts the order rather than trusting the comment.
+func TestTheInvitationLimitSeesTheCallerItIsKeyedBy(t *testing.T) {
+	t.Parallel()
+
+	var (
+		reached bool
+		keyed   bool
+	)
+
+	// Short-circuits, so the nil invitation service behind it is never touched.
+	recorder := func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			reached = true
+			_, keyed = identityhttp.CallerFrom(r.Context())
+
+			w.WriteHeader(http.StatusNoContent)
+		})
+	}
+
+	mux := newMuxWith(t, newStore(t), recorder)
+	cookie := signIn(t, mux)
+
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/invitations",
+		strings.NewReader(`{"email":"budi@example.test","role":"viewer"}`))
+	r.AddCookie(cookie)
+
+	mux.ServeHTTP(httptest.NewRecorder(), r)
+
+	if !reached {
+		t.Fatal("the limit was never reached for a signed-in caller")
+	}
+
+	if !keyed {
+		t.Error("the limit runs before the session is resolved, so it has nothing to key on")
 	}
 }

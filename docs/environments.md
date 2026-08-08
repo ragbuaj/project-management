@@ -63,11 +63,22 @@ isian asal-asalan, dan isian asal-asalan sampai ke produksi.
 
 | Nama | Wajib | Rahasia | Keterangan |
 |---|:--:|:--:|---|
-| `SMTP_HOST` | ya | — | |
-| `SMTP_PORT` | ya | — | |
-| `SMTP_USERNAME` | ya | ✅ | |
-| `SMTP_PASSWORD` | ya | ✅ | |
-| `SMTP_FROM` | ya | — | Alamat pengirim |
+| `SMTP_HOST` | ya | — | Lokal: layanan Mailpit di compose |
+| `SMTP_PORT` | — | — | Default 587 — submission lewat STARTTLS. Mailpit mendengarkan di 1025, jadi lokal harus disetel |
+| `SMTP_USERNAME` | produksi | ✅ | Wajib saat `APP_ENV=production`, opsional di `local` |
+| `SMTP_PASSWORD` | produksi | ✅ | Sama seperti di atas. Setel keduanya atau tidak sama sekali |
+| `SMTP_FROM` | ya | — | Alamat pengirim. Nama tampilan ikut disimpan: `Project Management <no-reply@pm.example.com>` |
+
+`SMTP_USERNAME` dan `SMTP_PASSWORD` sebelumnya tertulis wajib di semua
+environment, dan itu keliru persis dengan cara yang diperingatkan halaman ini:
+Mailpit tidak menerima kredensial apa pun, jadi mewajibkannya di `local` hanya
+melahirkan isian asal-asalan. Bentuknya sekarang sama dengan `APP_BASE_URL` —
+aturan yang hanya mengetat di tempat ia berarti (keputusan pemilik, 2026-08-08).
+
+Koneksi tanpa enkripsi hanya diizinkan saat `APP_ENV=local`, dan itu terikat ke
+`APP_ENV` alih-alih punya variabel sendiri supaya tidak ada saklar terpisah yang
+bisa salah disetel di produksi. Kredensial di atas koneksi seperti itu ditolak
+di konstruktornya.
 
 ### Telegram (Fase 8)
 

@@ -32,6 +32,11 @@ var lowestAllowed = map[authz.Action]authz.Role{
 
 	authz.ActionProjectDelete:    authz.RoleOwner,
 	authz.ActionProjectChangeKey: authz.RoleNone,
+
+	// The matrix row shows a dash in every column, but its columns stop at
+	// maintainer. The owner's half is the closed list in the same document,
+	// which names adding employees and setting their account role.
+	authz.ActionUserInvite: authz.RoleOwner,
 }
 
 // A rule that exists without anybody deciding who it is for is how a

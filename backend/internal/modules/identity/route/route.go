@@ -19,7 +19,14 @@ import (
 // that has to remember to check is a handler that will one day be added
 // without checking, and the mistake is invisible until somebody reads data
 // that was never theirs.
-func Register(mux *http.ServeMux, auth *identityhttp.Auth, sessions *identitysvc.Sessions, log *slog.Logger) {
+func Register(
+	mux *http.ServeMux,
+	auth *identityhttp.Auth,
+	invitations *identityhttp.Invitations,
+	sessions *identitysvc.Sessions,
+	inviteLimit httpx.Middleware,
+	log *slog.Logger,
+) {
 	guard := RequireSession(sessions, log)
 
 	mux.Handle("POST /api/v1/auth/login", http.HandlerFunc(auth.Login))
@@ -32,6 +39,16 @@ func Register(mux *http.ServeMux, auth *identityhttp.Auth, sessions *identitysvc
 	mux.Handle("GET /api/v1/me/sessions", guard(http.HandlerFunc(auth.ListSessions)))
 	mux.Handle("DELETE /api/v1/me/sessions", guard(http.HandlerFunc(auth.RevokeOtherSessions)))
 	mux.Handle("DELETE /api/v1/me/sessions/{id}", guard(http.HandlerFunc(auth.RevokeSession)))
+
+	// The limit sits **inside** the guard, and the order is the point: it is
+	// keyed by the calling account, and the account only exists in the context
+	// once the guard has resolved it. Outside, the key would be empty on every
+	// request and the limit would count nothing while looking installed.
+	//
+	// It is httpx.RateLimit rather than the login guard because this endpoint
+	// verifies no secret: what is worth counting here is every request, not the
+	// failures (ADR-0005 §131, ADR-0010).
+	mux.Handle("POST /api/v1/invitations", guard(inviteLimit(http.HandlerFunc(invitations.Create))))
 }
 
 // RequireSession resolves the session cookie and refuses the request when

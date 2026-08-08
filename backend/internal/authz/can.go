@@ -32,6 +32,8 @@ const (
 	ActionFolderDelete        Action = "folder.delete"
 	ActionFolderMembersView   Action = "folder.members.view"
 	ActionFolderMembersManage Action = "folder.members.manage"
+
+	ActionUserInvite Action = "user.invite"
 )
 
 // rule is one row of the matrix.
@@ -84,6 +86,16 @@ var rules = map[Action]rule{
 	// the application, and it is the one place where being able to reach a
 	// project is deliberately not enough.
 	ActionProjectDelete: {minimum: RoleOwner},
+
+	// Also the owner's alone, and it needs no resource: there is nothing to be
+	// a member of when the account being created does not exist yet.
+	//
+	// The row in docs/authorization.md shows a dash in every column, because
+	// its columns stop at maintainer. The owner's half is the closed list in
+	// the same document, which names adding employees and setting their account
+	// role as a right held outside any membership (ADR-0012). Self-registration
+	// is a non-goal, so this is the only way an account is ever created.
+	ActionUserInvite: {minimum: RoleOwner},
 
 	// Nobody, including the owner. The key is part of every card number ever
 	// written into a commit message, a chat, or a document, so changing it
