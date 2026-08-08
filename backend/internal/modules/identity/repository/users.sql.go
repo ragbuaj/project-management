@@ -180,6 +180,49 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 	return items, nil
 }
 
+const setUserPasswordHash = `-- name: SetUserPasswordHash :one
+UPDATE users
+SET password_hash = $1::text,
+    updated_at = now()
+WHERE id = $2
+  AND deleted_at IS NULL
+RETURNING id, email, name, timezone, role
+`
+
+type SetUserPasswordHashParams struct {
+	PasswordHash string
+	ID           string
+}
+
+type SetUserPasswordHashRow struct {
+	ID       string
+	Email    string
+	Name     string
+	Timezone string
+	Role     string
+}
+
+// Replacing a forgotten password. Unlike the rehash above there is no old hash
+// to match on, because the whole point of a reset is that nobody knows it -- so
+// what stands in its place is the single-use stamp on password_resets, taken in
+// the same transaction as this statement.
+//
+// It returns the account rather than a row count so that confirmation does not
+// need a second read for what it is about to answer with, and so that an id
+// naming no live account arrives as no rows rather than as a silent zero.
+func (q *Queries) SetUserPasswordHash(ctx context.Context, arg SetUserPasswordHashParams) (SetUserPasswordHashRow, error) {
+	row := q.db.QueryRow(ctx, setUserPasswordHash, arg.PasswordHash, arg.ID)
+	var i SetUserPasswordHashRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Name,
+		&i.Timezone,
+		&i.Role,
+	)
+	return i, err
+}
+
 const softDeleteUser = `-- name: SoftDeleteUser :execrows
 UPDATE users
 SET deleted_at = now(),

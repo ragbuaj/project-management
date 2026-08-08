@@ -66,3 +66,19 @@ SET password_hash = sqlc.arg(new_hash)::text,
 WHERE id = sqlc.arg(id)
   AND password_hash = sqlc.arg(current_hash)::text
   AND deleted_at IS NULL;
+
+-- Replacing a forgotten password. Unlike the rehash above there is no old hash
+-- to match on, because the whole point of a reset is that nobody knows it -- so
+-- what stands in its place is the single-use stamp on password_resets, taken in
+-- the same transaction as this statement.
+--
+-- It returns the account rather than a row count so that confirmation does not
+-- need a second read for what it is about to answer with, and so that an id
+-- naming no live account arrives as no rows rather than as a silent zero.
+-- name: SetUserPasswordHash :one
+UPDATE users
+SET password_hash = sqlc.arg(password_hash)::text,
+    updated_at = now()
+WHERE id = sqlc.arg(id)
+  AND deleted_at IS NULL
+RETURNING id, email, name, timezone, role;
