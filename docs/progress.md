@@ -1,6 +1,7 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `96194d7`.
+**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `0159ab3`,
+ditambah #96 yang menunggu CI.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -32,21 +33,30 @@ satu pemeriksaan keanggotaan, dengan pengecualian owner hidup di satu tempat.
 Yang tersisa dimulai dari Langkah 18 (undangan, reset password, daftar sesi),
 lalu seluruh frontend.
 
-**Langkah 18 sudah melewati enam dari delapan potongannya.** Potongan a
+**Langkah 18 sudah melewati tujuh dari delapan potongannya.** Potongan a
 menentukan alamat klien di belakang proxy; potongan b mengganti fixed window
 dengan sliding window berlapis; potongan c memasang tiga ember kegagalan —
 akun, alamat, jaringan — di depan `/auth/login`; potongan d memberi setiap akun
 daftar sesinya sendiri dan dua cara mengakhirinya; potongan e melahirkan
 `internal/mail`; potongan f menutup seluruh alur undangan, dari token sampai
-akun yang jadi.
+akun yang jadi; potongan g menutup alur reset password, dari permintaan sampai
+sandi baru dan seluruh sesi lama yang dicabut.
 
 **`/auth/login` berbatas sejak PR #73**, dan itu menutup lubang tertua di
 repo ini: `httpx.RateLimit` ada sejak Langkah 13 dan tidak pernah dipasang,
 padahal ADR-0005 dan ADR-0010 mewajibkannya.
 
-Yang tersisa di Langkah 18 adalah potongan g dan h — reset password dan
-blocklist HIBP — dan keduanya sekarang punya pengirim surel yang mereka
-butuhkan, sudah terpasang di proses yang berjalan.
+Yang tersisa di Langkah 18 tinggal potongan h — blocklist HIBP. Ia menyentuh
+dua jalur yang sudah ada, dan keduanya kini sudah berdiri: `Invitations.Accept`
+dan `PasswordResets.Confirm`, masing-masing memanggil `identitydom.HashPassword`
+di satu baris.
+
+**Aplikasi ini sekarang bisa memulihkan akun tanpa campur tangan siapa pun.**
+Orang yang lupa sandinya memanggil `POST /auth/password/reset`, membuka
+tautannya, memilih sandi baru lewat `POST /auth/password/reset/confirm`, dan
+seluruh perangkat yang tadinya masuk ikut dikeluarkan. Sampai #96 satu-satunya
+jalan keluar dari sandi yang terlupa adalah mengubah `password_hash` langsung
+di database.
 
 **Potongan f tuntas dalam enam PR:** token undangan (#82), empat query beserta
 cap sekali pakainya (#83), `Invitations.Create` yang mengundang lalu mengirim
@@ -205,6 +215,24 @@ selesai lalu diam-diam menggantinya adalah cara catatan ini berbohong.
 > berturut-turut. Tiga PR ter-merge (#86, #87, #88) dan ketiganya menutup
 > potongan f.
 >
+> Rekonsiliasi kedua puluh (2026-08-08, `0159ab3` + #96): dihitung dengan skrip
+> yang sama — 37 baris, 31 sub-langkah bernomor (22 `selesai`, 1 `sedang`,
+> 8 `belum`) ditambah 6 baris perubahan cakupan yang semuanya `selesai`,
+> ditambah 10 gerbang dokumen. Jadi **38 · 1 · 8** untuk **ketujuh** kalinya
+> berturut-turut. Tujuh PR ter-merge (#90–#96) dan ketujuhnya menutup potongan g.
+>
+> Tujuh rekonsiliasi diam sementara dua puluh PR ter-merge. Baris Langkah 18
+> tetap `sedang` dan itu benar: tujuh dari delapan potongan selesai, dan barisnya
+> baru boleh berubah kalau kedelapan-delapannya masuk.
+>
+> **Prosa di sekitar tabel diperiksa lebih dulu kali ini, bukan terakhir**, dan
+> tiga kalimat memang sudah salah: `enam dari delapan potongan`, janji bahwa
+> potongan g `menyusul`, dan — yang paling mahal — catatan di bagian "yang perlu
+> diingat" bahwa potongan g butuh `LoginGuard`. Yang ketiga bukan prosa basi
+> melainkan **petunjuk yang salah**, dan ia dicoret di tempatnya dengan aturan
+> yang sebenarnya berlaku ditulis di bawahnya, bukan dihapus. Catatan yang salah
+> dan hilang tanpa jejak adalah cara berkas ini kehilangan kepercayaan.
+>
 > Enam rekonsiliasi diam sementara tiga belas PR ter-merge. Yang bergerak
 > memang bukan angka Fase 0: satu baris tabel itu menampung delapan potongan
 > dan enam sudah selesai, tapi barisnya baru boleh berubah kalau kedelapan-
@@ -263,7 +291,7 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | — | Migration `00009` & `00010` — peran akun, dan pembuangan `is_owner` | selesai | Perubahan cakupan, lihat bawah; [ADR-0012](adr/0012-peran-akun-dan-akses-owner.md) | PR #59, #60, #63 (`98c5b4d`) |
 | — | Modul identity membawa peran akun, bukan `is_owner` | selesai | ADR-0012 | PR #61 |
 | 17 | `internal/authz` + table-driven test **tujuh** pola | selesai | Rencana Fase 0 §17, [authorization.md](authorization.md), ADR-0012 | PR #53, #54, #55, lalu **ditulis ulang** di #62 (`94d2303`) |
-| 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | sedang | Rencana Fase 0 §18, ADR-0009, ADR-0010 | 6 dari 8 potongan selesai — a: #65 · b: #67, #68 · c: #69, #71, #72, #73 · d: #75, #76 · e: #78, #79, #80 · f: #82, #83, #84, #86, #87, #88. Sisa: g (reset password), h (HIBP) |
+| 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | sedang | Rencana Fase 0 §18, ADR-0009, ADR-0010 | 7 dari 8 potongan selesai — a: #65 · b: #67, #68 · c: #69, #71, #72, #73 · d: #75, #76 · e: #78, #79, #80 · f: #82, #83, #84, #86, #87, #88 · g: #90, #91, #92, #93, #94, #95, #96. Sisa: h (HIBP) |
 | 19 | **Gerbang manusia:** arah desain tertulis | belum | Rencana Fase 0 §19, `rules/15-ui-design.md` §2 | — |
 | 20 | Scaffold Vite + shadcn + token | belum | Rencana Fase 0 §20 | — |
 | 21 | Generate tipe dari OpenAPI + layar login empat state | belum | Rencana Fase 0 §21 | — |
@@ -388,6 +416,34 @@ yang **mengubah cara kerja**, bukan sejarah.
   nullable tetap datang sebagai `pgtype.Timestamptz` dengan `.Valid`, bukan
   `*time.Time`. Konversinya berhenti di lapisan service — domain tidak mengimpor
   apa pun dari repository (ADR-0008).
+- **Ada properti yang tidak bisa dilihat lewat panggilan store mana pun, dan
+  test-nya akan terlihat lengkap sampai ada yang memutasinya.** Di #94 memindah
+  `HashPassword` ke **dalam** transaksi tidak mengubah satu pun assertion:
+  panggilan mahal itu bukan panggilan store, jadi `store.calls` tetap identik.
+  Yang hilang bukan test yang lemah melainkan kejadian yang tak terekam.
+  Jawabannya membuat kejadiannya terekam — fake `inTx` sekarang mencatat
+  `"begin"` — bukan menambah assertion pada yang sudah terlihat. Kalau sebuah
+  klaim berbunyi "X tidak terjadi di dalam Y", maka **Y harus punya jejak**.
+- **Satu batas transaksi per modul berarti setiap fake menanggung seluruh
+  antarmuka.** `TxStore` (dulu `InvitationStore`, diganti nama di #90) tumbuh
+  enam metode selama potongan g, dan tiga fake yang sudah ada masing-masing ikut
+  bertambah — sekitar delapan puluh baris stub yang tidak diuji siapa pun.
+  Ongkos ini disengaja dan alasannya ada di komentar `TxStore`, tapi ia tumbuh
+  linear terhadap jumlah service. **Kalau modul berikutnya membuat fake-nya lebih
+  panjang daripada test-nya, keputusan itu perlu ditinjau ulang** — bukan
+  sekarang.
+- **`Get-Content -Raw` lalu `Set-Content -Encoding utf8` merusak karakter
+  non-ASCII.** PowerShell 5.1 membaca berkas UTF-8 sebagai ANSI, jadi setiap em
+  dash kembali sebagai dua karakter dan ditulis ulang sebagai empat byte. Ini
+  merusak `passwordreset.go` saat dipakai untuk menjalankan mutasi. **Untuk
+  mengubah berkas, pakai alat edit; PowerShell untuk menjalankan perintah, bukan
+  untuk menyunting.** Sekelas dengan heredoc bash yang menelan backslash regex,
+  yang sudah tercatat di sesi undangan.
+- **Pesan commit dan body PR lewat berkas, bukan lewat `-m`.** PS 5.1 memecah
+  argumen yang memuat tanda kutip ganda saat meneruskannya ke `git`, dan
+  gejalanya `pathspec '...' did not match any file(s)` — terbaca seperti masalah
+  git, padahal masalah shell. `git commit -F <berkas>` dan
+  `gh pr create --body-file <berkas>` tidak punya persoalan ini.
 
 ## Langkah 18, dipotong sebelum ditulis
 
@@ -402,7 +458,7 @@ menutup lubang rate limit lebih dulu.
 | d | Daftar & cabut sesi + kontrak | selesai — #75 query & kebijakan, #76 endpoint & kontrak |
 | e | `internal/mail` — pengirim SMTP, dan penangkap untuk test | selesai — #78 render, #79 penangkap, #80 SMTP |
 | f | Undangan: owner membuat akun pegawai | selesai — 6 PR: #82 token, #83 query, #84 pembuatan & pengiriman, #86 penukaran, #87 `POST /invitations` + `SMTP_*` + perakitan, #88 `POST /invitations/accept` |
-| g | Reset password | belum |
+| g | Reset password | selesai — 7 PR: #90 `TxStore`, #91 token & jendela, #92 query, #93 `Request`, #94 `Confirm`, #95 `POST /auth/password/reset`, #96 `POST /auth/password/reset/confirm` |
 | h | Blocklist HIBP dengan k-anonymity, bertimeout, gagal terbuka | belum |
 
 Potongan f akhirnya butuh **enam** PR, bukan lima seperti yang diputuskan
@@ -441,8 +497,17 @@ Yang perlu diingat saat melanjutkan:
   menit dan 2000 / hari. Tabel ADR-0010 hanya punya baris per akun dan per IP.
   Ini yang pertama layak diperdebatkan kalau ada yang terkunci tanpa sebab; ia
   ada di `DefaultLoginLimits` dan ditandai di komentarnya.
-- **Potongan g (reset password) butuh `LoginGuard` lagi, bukan
-  `httpx.RateLimit`**: ia memverifikasi rahasia, jadi yang dihitung kegagalan.
+- ~~**Potongan g (reset password) butuh `LoginGuard` lagi, bukan
+  `httpx.RateLimit`**: ia memverifikasi rahasia, jadi yang dihitung kegagalan.~~
+  **Salah, dan dikoreksi di #96.** Catatan ini ditulis sebelum
+  `/invitations/accept` ada. Endpoint itu juga memverifikasi rahasia dan
+  `cmd/api/main.go` memutuskan sebaliknya, dengan alasan yang ditulis di
+  tempatnya: token acak 32 byte bukan sesuatu yang ditebak siapa pun, jadi yang
+  layak dibatasi trafiknya. Token reset lahir dari `newOpaqueToken` yang sama.
+  **Aturan yang sebenarnya berlaku:** `LoginGuard` untuk rahasia yang bisa
+  ditebak manusia — sampai sekarang hanya password di `/auth/login`;
+  `httpx.RateLimit` untuk segala sesuatu yang lain, termasuk endpoint yang
+  menukar token opaque.
 - **Potongan f yang merakit `internal/mail`, dan sudah dilakukan di #87.**
   `SMTP_*` dibaca `internal/config`, `mail.NewSMTP` dirakit di `cmd/api`, dan
   `identitysvc.InTx` membuka transaksi dari pool. Potongan g mewarisi ketiganya
