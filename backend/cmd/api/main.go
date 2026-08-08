@@ -162,7 +162,7 @@ func run() error {
 // fake instead of something that has to impersonate pgx.Tx. Opening the
 // transaction is this file's job because this file is where the pool lives.
 func inTx(pool *pgxpool.Pool) identitysvc.InTx {
-	return func(ctx context.Context, fn func(identitysvc.InvitationStore) error) error {
+	return func(ctx context.Context, fn func(identitysvc.TxStore) error) error {
 		tx, err := pool.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("begin: %w", err)

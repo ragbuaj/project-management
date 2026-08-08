@@ -79,7 +79,7 @@ func inviteHandler(t *testing.T, store *inviteFake) (*identityhttp.Invitations, 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	service := identitysvc.NewInvitations(
-		func(ctx context.Context, fn func(identitysvc.InvitationStore) error) error { return fn(store) },
+		func(ctx context.Context, fn func(identitysvc.TxStore) error) error { return fn(store) },
 		capture, base, log, time.Now)
 
 	return identityhttp.NewInvitations(service, identitysvc.NewSessions(newStore(t), log, time.Now), log), capture
