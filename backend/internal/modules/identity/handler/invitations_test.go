@@ -66,6 +66,17 @@ func (f *inviteFake) CreateUser(context.Context, identityrepo.CreateUserParams) 
 	return identityrepo.CreateUserRow{}, nil
 }
 
+// The password reset half of the store. The module has one transaction boundary
+// and therefore one store interface, so an invitation fake has to answer these
+// too; no invitation test reaches them.
+func (f *inviteFake) ExpireOpenPasswordResetsForUser(context.Context, string) (int64, error) {
+	return 0, nil
+}
+
+func (f *inviteFake) CreatePasswordReset(context.Context, identityrepo.CreatePasswordResetParams) (identityrepo.CreatePasswordResetRow, error) {
+	return identityrepo.CreatePasswordResetRow{}, nil
+}
+
 func inviteHandler(t *testing.T, store *inviteFake) (*identityhttp.Invitations, *mail.Capture) {
 	t.Helper()
 
