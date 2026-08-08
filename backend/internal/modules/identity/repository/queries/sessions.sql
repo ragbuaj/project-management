@@ -83,3 +83,14 @@ WHERE id = sqlc.arg(id)::uuid
 DELETE FROM sessions
 WHERE user_id = sqlc.arg(user_id)
   AND id <> sqlc.arg(current_id)::uuid;
+
+-- Signing out everywhere, with no exception -- the one above keeps the caller's
+-- session because they asked from inside it, and this one has no caller to keep.
+--
+-- It exists for password reset, where whoever is signing in is not necessarily
+-- whoever was already signed in. A reset that left the old sessions alive would
+-- leave the account in the hands it was being taken out of, which is the one
+-- thing somebody clicking "forgot password" after a scare is trying to undo.
+-- name: DeleteAllSessionsForUser :execrows
+DELETE FROM sessions
+WHERE user_id = sqlc.arg(user_id);

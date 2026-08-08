@@ -28,6 +28,16 @@ type Querier interface {
 	// viewer: there is exactly one owner and that account is the first one, not an
 	// invited one.
 	CreateInvitation(ctx context.Context, arg CreateInvitationParams) (CreateInvitationRow, error)
+	// Password resets. Like sessions and invitations, the token itself never
+	// reaches this file: what is stored and what is looked up is its SHA-256,
+	// computed in the domain layer (ADR-0005). And like both of them, token_hash is
+	// never selected -- nothing outside confirmation may see it, and one stray
+	// column in a row is a credential on its way into a JSON body.
+	//
+	// There is no address anywhere here. The row points at an account by id, so a
+	// link requested before somebody changed their address cannot resurrect the old
+	// one.
+	CreatePasswordReset(ctx context.Context, arg CreatePasswordResetParams) (CreatePasswordResetRow, error)
 	// Sessions. The token itself never reaches this file: what is stored and what
 	// is looked up is its SHA-256, computed in the domain layer (ADR-0005).
 	CreateSession(ctx context.Context, arg CreateSessionParams) (CreateSessionRow, error)
@@ -40,6 +50,14 @@ type Querier interface {
 	// straight back to the caller, and a row read back with an empty timezone would
 	// be this query reporting a value that is not what was stored.
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
+	// Signing out everywhere, with no exception -- the one above keeps the caller's
+	// session because they asked from inside it, and this one has no caller to keep.
+	//
+	// It exists for password reset, where whoever is signing in is not necessarily
+	// whoever was already signed in. A reset that left the old sessions alive would
+	// leave the account in the hands it was being taken out of, which is the one
+	// thing somebody clicking "forgot password" after a scare is trying to undo.
+	DeleteAllSessionsForUser(ctx context.Context, userID string) (int64, error)
 	// Signing out everywhere else. The session making the request is kept, because
 	// the caller asked to end the others and an answer they cannot receive while
 	// still signed in is not the thing they asked for.
@@ -63,12 +81,26 @@ type Querier interface {
 	// alone: they are the record that an account was created from this invitation,
 	// and rewriting their deadline would rewrite that history.
 	ExpireOpenInvitationsForEmail(ctx context.Context, email string) (int64, error)
+	// Asking for a second link. The previous one stops working the moment a new one
+	// is sent, rather than every link ever requested staying live until its own
+	// deadline -- somebody who clicks "forgot password" four times should not leave
+	// four ways into their account lying in an inbox.
+	//
+	// Spent rows are left alone: they are the record that a password was replaced
+	// through them, and rewriting their deadline would rewrite that history.
+	ExpireOpenPasswordResetsForUser(ctx context.Context, userID string) (int64, error)
 	// Redemption. Expiry and acceptance are deliberately not filtered here, for the
 	// same reason GetSessionByTokenHash does not filter expiry: the caller has to
 	// tell an expired link from one that never existed for the log, and a WHERE
 	// clause that hides the row makes the two indistinguishable. What the caller
 	// must not do is let that difference reach the client — see Invitation.IsUsable.
 	GetInvitationByTokenHash(ctx context.Context, tokenHash []byte) (GetInvitationByTokenHashRow, error)
+	// Confirmation. Expiry and use are deliberately not filtered here, for the same
+	// reason GetInvitationByTokenHash does not filter them: the caller has to tell a
+	// spent link from one that never existed for the log, and a WHERE clause that
+	// hides the row makes the two indistinguishable. What the caller must not do is
+	// let that difference reach the client -- see PasswordReset.IsUsable.
+	GetPasswordResetByTokenHash(ctx context.Context, tokenHash []byte) (GetPasswordResetByTokenHashRow, error)
 	// Every authenticated request runs this, which is why it also returns the
 	// user: the alternative is two round trips per request for data that is
 	// always needed together.
@@ -102,6 +134,15 @@ type Querier interface {
 	// 24); this only decides what is shown.
 	ListSessionsByUser(ctx context.Context, userID string) ([]ListSessionsByUserRow, error)
 	ListUsers(ctx context.Context) ([]ListUsersRow, error)
+	// Replacing a forgotten password. Unlike the rehash above there is no old hash
+	// to match on, because the whole point of a reset is that nobody knows it -- so
+	// what stands in its place is the single-use stamp on password_resets, taken in
+	// the same transaction as this statement.
+	//
+	// It returns the account rather than a row count so that confirmation does not
+	// need a second read for what it is about to answer with, and so that an id
+	// naming no live account arrives as no rows rather than as a silent zero.
+	SetUserPasswordHash(ctx context.Context, arg SetUserPasswordHashParams) (SetUserPasswordHashRow, error)
 	// Masking, not deleting: the account keeps its rows so that its cards and
 	// comments survive with an author (docs/data-model.md, retention). The address
 	// is replaced rather than blanked so the partial unique index frees the
@@ -117,6 +158,16 @@ type Querier interface {
 	// The old hash is matched as well as the id, so two logins racing each other
 	// cannot have one overwrite the other's rehash with a stale value.
 	UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) (int64, error)
+	// Stamping the reset as spent, and the only thing that makes it single-use.
+	//
+	// The conditions are in the WHERE rather than checked in Go beforehand. Two
+	// confirmations of the same link arriving together would both read an open row
+	// and both go on to write a password; here the second one updates no rows and
+	// the caller can see that it lost. The password is written in the same
+	// transaction as this statement, so a confirmation that loses changes nothing --
+	// which matters more than it does for invitations, because the loser would
+	// otherwise set the password of an account that is already somebody's.
+	UsePasswordReset(ctx context.Context, id string) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

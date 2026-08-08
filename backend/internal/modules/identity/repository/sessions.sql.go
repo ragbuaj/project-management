@@ -58,6 +58,26 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (C
 	return i, err
 }
 
+const deleteAllSessionsForUser = `-- name: DeleteAllSessionsForUser :execrows
+DELETE FROM sessions
+WHERE user_id = $1
+`
+
+// Signing out everywhere, with no exception -- the one above keeps the caller's
+// session because they asked from inside it, and this one has no caller to keep.
+//
+// It exists for password reset, where whoever is signing in is not necessarily
+// whoever was already signed in. A reset that left the old sessions alive would
+// leave the account in the hands it was being taken out of, which is the one
+// thing somebody clicking "forgot password" after a scare is trying to undo.
+func (q *Queries) DeleteAllSessionsForUser(ctx context.Context, userID string) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAllSessionsForUser, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteOtherSessionsForUser = `-- name: DeleteOtherSessionsForUser :execrows
 DELETE FROM sessions
 WHERE user_id = $1
