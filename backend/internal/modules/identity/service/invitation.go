@@ -21,14 +21,18 @@ import (
 	identityrepo "github.com/ragbuaj/project-management/backend/internal/modules/identity/repository"
 )
 
-// InvitationStore is the part of the repository this service uses, declared at
-// the consumer for the same reason SessionStore is.
+// TxStore is the part of the repository the transactional services in this
+// module use, declared at the consumer for the same reason SessionStore is.
 //
-// Sending an invitation and redeeming one share this interface, and therefore
-// share one InTx, because they are two halves of the same transaction boundary.
-// A second store with a second InTx beside it would let the two halves drift
-// into two different answers about what a transaction is.
-type InvitationStore interface {
+// There is one of these for the whole module rather than one per service,
+// because a transaction boundary is a property of the module and not of the
+// feature that happens to need it. A second store with a second InTx beside it
+// would let two features drift into two different answers about what a
+// transaction is — and they run against the same rows.
+//
+// It grows a method when a service needs one. That is the cost of the single
+// boundary, and it is cheaper than the drift.
+type TxStore interface {
 	CreateInvitation(ctx context.Context, arg identityrepo.CreateInvitationParams) (identityrepo.CreateInvitationRow, error)
 	ExpireOpenInvitationsForEmail(ctx context.Context, email string) (int64, error)
 	GetUserByEmail(ctx context.Context, email string) (identityrepo.GetUserByEmailRow, error)
@@ -51,7 +55,7 @@ type Sender interface {
 // The transaction boundary belongs to this layer (ADR-0008, rules/20-go.md),
 // but pgx does not: taking a function keeps the service testable with an
 // ordinary fake instead of something that has to impersonate pgx.Tx.
-type InTx func(ctx context.Context, fn func(InvitationStore) error) error
+type InTx func(ctx context.Context, fn func(TxStore) error) error
 
 var (
 	// ErrInvalidEmail means the address is not one a message could be sent to.
@@ -162,7 +166,7 @@ func (s *Invitations) Create(ctx context.Context, invitedBy, email, role string)
 
 	var created identityrepo.CreateInvitationRow
 
-	err = s.inTx(ctx, func(store InvitationStore) error {
+	err = s.inTx(ctx, func(store TxStore) error {
 		switch _, err := store.GetUserByEmail(ctx, address); {
 		case err == nil:
 			return ErrEmailTaken
@@ -255,7 +259,7 @@ func (s *Invitations) Accept(ctx context.Context, token, name, password string) 
 
 	var created identityrepo.CreateUserRow
 
-	err = s.inTx(ctx, func(store InvitationStore) error {
+	err = s.inTx(ctx, func(store TxStore) error {
 		row, err := store.GetInvitationByTokenHash(ctx, digest)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
