@@ -201,12 +201,14 @@ type fullStore interface {
 func newMux(t *testing.T, s fullStore) *http.ServeMux {
 	t.Helper()
 
-	return newMuxWith(t, s, func(next http.Handler) http.Handler { return next })
+	pass := func(next http.Handler) http.Handler { return next }
+
+	return newMuxWith(t, s, pass, pass)
 }
 
 // newMuxWith is newMux with the invitation rate limit replaced, so a test can
 // see where in the chain it sits.
-func newMuxWith(t *testing.T, s fullStore, inviteLimit httpx.Middleware) *http.ServeMux {
+func newMuxWith(t *testing.T, s fullStore, inviteLimit, acceptLimit httpx.Middleware) *http.ServeMux {
 	t.Helper()
 
 	log := slog.New(slog.DiscardHandler)
@@ -229,9 +231,10 @@ func newMuxWith(t *testing.T, s fullStore, inviteLimit httpx.Middleware) *http.S
 		// No invitation service and no limit: these tests ask about routing and
 		// sessions. A nil service is safe because every test here stops at the
 		// guard, and the one that does not asserts exactly that.
-		identityhttp.NewInvitations(nil, log),
+		identityhttp.NewInvitations(nil, sessions, log),
 		sessions,
 		inviteLimit,
+		acceptLimit,
 		log)
 
 	return mux
@@ -772,7 +775,7 @@ func TestTheInvitationLimitSeesTheCallerItIsKeyedBy(t *testing.T) {
 		})
 	}
 
-	mux := newMuxWith(t, newStore(t), recorder)
+	mux := newMuxWith(t, newStore(t), recorder, func(next http.Handler) http.Handler { return next })
 	cookie := signIn(t, mux)
 
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/invitations",
@@ -787,5 +790,36 @@ func TestTheInvitationLimitSeesTheCallerItIsKeyedBy(t *testing.T) {
 
 	if !keyed {
 		t.Error("the limit runs before the session is resolved, so it has nothing to key on")
+	}
+}
+
+// Redeeming a link must **not** be behind the session guard: whoever follows an
+// invitation has no account yet, which is the point of the endpoint. The
+// recorder short-circuits, so the nil invitation service behind it is never
+// touched.
+func TestRedeemingALinkNeedsNoSession(t *testing.T) {
+	t.Parallel()
+
+	var reached bool
+
+	recorder := func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			reached = true
+
+			w.WriteHeader(http.StatusNoContent)
+		})
+	}
+
+	pass := func(next http.Handler) http.Handler { return next }
+	mux := newMuxWith(t, newStore(t), pass, recorder)
+
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/invitations/accept",
+		strings.NewReader(`{"token":"t","name":"Budi","password":"sandi-yang-cukup-panjang"}`))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, r)
+
+	if !reached {
+		t.Fatalf("the endpoint was not reached without a session; status = %d", w.Code)
 	}
 }

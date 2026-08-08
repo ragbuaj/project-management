@@ -302,6 +302,78 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  /invitations/accept:
+    post:
+      tags: [invitations]
+      summary: Tukarkan tautan undangan jadi akun
+      description: |
+        **Tanpa sesi.** Yang mengikuti tautan undangan belum punya akun — itu
+        justru maksud endpoint ini. Yang menggantikan sesi adalah token di
+        tautan, dan token itu sekali pakai.
+
+        Alamat dan peran diambil dari undangan, tidak pernah dari permintaan.
+        Keduanya adalah keseluruhan dari apa yang disetujui owner, dan
+        membiarkan pemegang tautan menyebutkan alamatnya sendiri akan mengubah
+        undangan ke satu alamat menjadi cara membuat akun di alamat mana pun.
+        Yang datang dari permintaan hanya nama dan sandi.
+
+        Berhasil berarti **langsung masuk**: cookie `__Host-session` ikut
+        diterbitkan. Orang yang baru saja membuktikan ia memegang tautannya dan
+        memilih sandinya sendiri sudah melakukan semua yang diminta halaman
+        login; menyuruhnya mengetik ulang sandi yang ia setel sepuluh detik lalu
+        tidak melindungi siapa pun.
+
+        Kebijakan sandi ada di
+        [ADR-0009](../adr/0009-kebijakan-password.md): minimal 12 karakter,
+        tanpa aturan komposisi, dinormalisasi NFKC sebelum di-hash.
+
+        Berbatas per alamat: 10 per 10 menit dan 50 per jam. **Gagal tertutup** —
+        ini endpoint tanpa autentikasi yang membaca kredensial dari sebuah URL.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, name, password]
+              properties:
+                token:
+                  type: string
+                  description: Bagian terakhir dari tautan di email undangan.
+                name:     { type: string, minLength: 1, maxLength: 200 }
+                password: { type: string, minLength: 12, maxLength: 1024 }
+      responses:
+        '201':
+          description: |
+            Akun dibuat dan sesinya dimulai. Cookie `__Host-session` disetel.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '404':
+          description: |
+            Tautan tidak pernah diterbitkan, **atau** sudah kedaluwarsa,
+            **atau** sudah dipakai. Ketiganya dijawab sama: membedakannya akan
+            memastikan kepada pemegang tautan bahwa alamat itu memang pernah
+            diundang (`docs/threat-model.md`). Bedanya ada di log server.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: |
+            Alamat pada undangan ini sudah punya akun — dibuat lewat jalur lain
+            antara tautan dikirim dan tautan diklik. Alamatnya tidak ikut
+            disebutkan: yang memegang tautan belum tentu orang yang dituju.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
   /projects:
     get:
       tags: [projects]

@@ -25,6 +25,7 @@ func Register(
 	invitations *identityhttp.Invitations,
 	sessions *identitysvc.Sessions,
 	inviteLimit httpx.Middleware,
+	acceptLimit httpx.Middleware,
 	log *slog.Logger,
 ) {
 	guard := RequireSession(sessions, log)
@@ -49,6 +50,12 @@ func Register(
 	// verifies no secret: what is worth counting here is every request, not the
 	// failures (ADR-0005 §131, ADR-0010).
 	mux.Handle("POST /api/v1/invitations", guard(inviteLimit(http.HandlerFunc(invitations.Create))))
+
+	// Deliberately **not** behind the guard: whoever follows an invitation link
+	// has no account yet, which is the point of the endpoint. What stands in
+	// for a session is the token in the link, and it is single-use. The limit
+	// is keyed by address rather than by account for the same reason.
+	mux.Handle("POST /api/v1/invitations/accept", acceptLimit(http.HandlerFunc(invitations.Accept)))
 }
 
 // RequireSession resolves the session cookie and refuses the request when

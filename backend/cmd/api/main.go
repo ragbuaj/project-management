@@ -120,9 +120,10 @@ func run() error {
 	mux := http.NewServeMux()
 	identityroute.Register(mux,
 		identityhttp.NewAuth(credentials, sessions, guard, cfg.TrustedProxies, log),
-		identityhttp.NewInvitations(invitations, log),
+		identityhttp.NewInvitations(invitations, sessions, log),
 		sessions,
 		inviteLimit(rdb, log),
+		acceptLimit(rdb, cfg.TrustedProxies, log),
 		log)
 
 	mux.Handle("GET /healthz", httpx.Health())
@@ -210,6 +211,39 @@ func inviteLimit(rdb *redis.Client, log *slog.Logger) httpx.Middleware {
 	}
 
 	return httpx.RateLimit(limiter, key, httpx.FailOpen, log)
+}
+
+// acceptLimit is the rate limit on redeeming an invitation link.
+//
+// Keyed by the caller's address, because there is no account yet — that is the
+// whole point of the endpoint. It fails **closed**: this is an unauthenticated
+// endpoint that reads a credential out of a URL, and docs/nfr.md keeps
+// fail-closed for exactly that shape. A caller whose address cannot be worked
+// out is refused for the same reason (ADR-0010).
+//
+// It is httpx.RateLimit rather than the login guard even though a token is
+// verified here: a 32-byte random token is not something anybody guesses, so
+// what is worth bounding is the traffic, not the failures.
+func acceptLimit(rdb *redis.Client, trusted httpx.TrustedProxies, log *slog.Logger) httpx.Middleware {
+	limiter := redis.NewLayered(rdb,
+		redis.Tier{Limit: 10, Window: 10 * time.Minute},
+		redis.Tier{Limit: 50, Window: time.Hour},
+	)
+
+	key := func(r *http.Request) string {
+		addr, ok := httpx.ClientIP(r, trusted)
+		if !ok {
+			// Never empty, which would skip the limit. One shared bucket for
+			// every unkeyable caller is the refusing side of a case that
+			// should not occur — RemoteAddr comes from net/http, not from the
+			// caller.
+			return "accept:unkeyable"
+		}
+
+		return "accept:" + httpx.RateLimitKey(addr)
+	}
+
+	return httpx.RateLimit(limiter, key, httpx.FailClosed, log)
 }
 
 // loginGuard builds the three failure counters ADR-0010 asks for.
