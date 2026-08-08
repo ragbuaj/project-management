@@ -40,6 +40,9 @@ type TxStore interface {
 	GetInvitationByTokenHash(ctx context.Context, tokenHash []byte) (identityrepo.GetInvitationByTokenHashRow, error)
 	AcceptInvitation(ctx context.Context, id string) (int64, error)
 	CreateUser(ctx context.Context, arg identityrepo.CreateUserParams) (identityrepo.CreateUserRow, error)
+
+	ExpireOpenPasswordResetsForUser(ctx context.Context, userID string) (int64, error)
+	CreatePasswordReset(ctx context.Context, arg identityrepo.CreatePasswordResetParams) (identityrepo.CreatePasswordResetRow, error)
 }
 
 // Sender delivers one message. It is an interface here, and a mail.SMTP or a
