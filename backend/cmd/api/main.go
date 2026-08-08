@@ -127,6 +127,7 @@ func run() error {
 		inviteLimit(rdb, log),
 		acceptLimit(rdb, cfg.TrustedProxies, log),
 		resetRequestLimit(rdb, cfg.TrustedProxies, log),
+		resetConfirmLimit(rdb, cfg.TrustedProxies, log),
 		log)
 
 	mux.Handle("GET /healthz", httpx.Health())
@@ -280,6 +281,34 @@ func resetRequestLimit(rdb *redis.Client, trusted httpx.TrustedProxies, log *slo
 		}
 
 		return "reset:" + httpx.RateLimitKey(addr)
+	}
+
+	return httpx.RateLimit(limiter, key, httpx.FailClosed, log)
+}
+
+// resetConfirmLimit bounds following a reset link, keyed by address.
+//
+// The same shape and the same numbers as acceptLimit, because it is the same
+// situation: an unauthenticated endpoint that reads a credential out of a URL.
+// It fails **closed**, and a caller whose address cannot be worked out shares
+// one bucket rather than skipping the limit.
+//
+// httpx.RateLimit rather than the login guard even though a secret is verified
+// here. ADR-0010 counts failures where somebody could plausibly be guessing; a
+// 32-byte random token is not that, so what is worth bounding is the traffic.
+func resetConfirmLimit(rdb *redis.Client, trusted httpx.TrustedProxies, log *slog.Logger) httpx.Middleware {
+	limiter := redis.NewLayered(rdb,
+		redis.Tier{Limit: 10, Window: 10 * time.Minute},
+		redis.Tier{Limit: 50, Window: time.Hour},
+	)
+
+	key := func(r *http.Request) string {
+		addr, ok := httpx.ClientIP(r, trusted)
+		if !ok {
+			return "reset-confirm:unkeyable"
+		}
+
+		return "reset-confirm:" + httpx.RateLimitKey(addr)
 	}
 
 	return httpx.RateLimit(limiter, key, httpx.FailClosed, log)

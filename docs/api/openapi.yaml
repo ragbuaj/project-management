@@ -172,6 +172,68 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
+  /auth/password/reset/confirm:
+    post:
+      tags: [auth]
+      summary: Tukarkan tautan reset jadi sandi baru
+      description: |
+        **Tanpa sesi**, dan **tidak menerbitkan sesi**.
+
+        Berhasil berarti seluruh sesi akun itu berakhir — termasuk milik
+        perangkat yang sedang dipakai untuk melakukannya. Itu justru gunanya:
+        orang yang mereset sandi setelah curiga sedang berusaha melepaskan
+        akunnya dari tangan lain, dan reset yang menyisakan sesi lama
+        meninggalkannya persis di tempat semula.
+
+        Berbeda dari `POST /invitations/accept`, yang langsung memasukkan
+        orangnya. Di sana akunnya baru lahir dan tidak ada yang lain yang bisa
+        ia lakukan; di sini pemanggilnya masuk sendiri sesudahnya, lewat
+        endpoint yang menghitung percobaan gagal (keputusan pemilik,
+        2026-08-08).
+
+        Cookie `__Host-session` ikut **dikosongkan**. Setiap sesi akun ini baru
+        saja dihapus di server, jadi peramban yang masih memegangnya memegang
+        kredensial mati.
+
+        Kebijakan sandi ada di
+        [ADR-0009](../adr/0009-kebijakan-password.md): minimal 12 karakter,
+        tanpa aturan komposisi, dinormalisasi NFKC sebelum di-hash.
+
+        Berbatas per alamat: 10 per 10 menit dan 50 per jam, **gagal
+        tertutup** — bentuk yang sama dengan `/invitations/accept`, karena ini
+        situasi yang sama: endpoint tanpa autentikasi yang membaca kredensial
+        dari sebuah URL.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token:
+                  type: string
+                  description: Bagian terakhir dari tautan di email reset.
+                password: { type: string, minLength: 12, maxLength: 1024 }
+      responses:
+        '204':
+          description: |
+            Sandi diganti dan seluruh sesi akun itu diakhiri. Tidak ada sesi
+            baru; pemanggil masuk lewat `POST /auth/login`.
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '404':
+          description: |
+            Tautan tidak pernah diterbitkan, **atau** sudah kedaluwarsa,
+            **atau** sudah dipakai, **atau** akunnya sudah dihapus sejak
+            tautannya dikirim. Semuanya dijawab sama — membedakannya akan
+            memberi tahu pemegang tautan apakah tebakannya salah atau sekadar
+            terlambat. Bedanya ada di log server.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
   /me:
     get:
       tags: [auth]

@@ -203,12 +203,12 @@ func newMux(t *testing.T, s fullStore) *http.ServeMux {
 
 	pass := func(next http.Handler) http.Handler { return next }
 
-	return newMuxWith(t, s, pass, pass, pass)
+	return newMuxWith(t, s, pass, pass, pass, pass)
 }
 
 // newMuxWith is newMux with the rate limits replaced, so a test can see where in
 // the chain each one sits.
-func newMuxWith(t *testing.T, s fullStore, inviteLimit, acceptLimit, resetRequestLimit httpx.Middleware) *http.ServeMux {
+func newMuxWith(t *testing.T, s fullStore, inviteLimit, acceptLimit, resetRequestLimit, resetConfirmLimit httpx.Middleware) *http.ServeMux {
 	t.Helper()
 
 	log := slog.New(slog.DiscardHandler)
@@ -237,6 +237,7 @@ func newMuxWith(t *testing.T, s fullStore, inviteLimit, acceptLimit, resetReques
 		inviteLimit,
 		acceptLimit,
 		resetRequestLimit,
+		resetConfirmLimit,
 		log)
 
 	return mux
@@ -778,7 +779,7 @@ func TestTheInvitationLimitSeesTheCallerItIsKeyedBy(t *testing.T) {
 	}
 
 	pass := func(next http.Handler) http.Handler { return next }
-	mux := newMuxWith(t, newStore(t), recorder, pass, pass)
+	mux := newMuxWith(t, newStore(t), recorder, pass, pass, pass)
 	cookie := signIn(t, mux)
 
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/invitations",
@@ -814,7 +815,7 @@ func TestRedeemingALinkNeedsNoSession(t *testing.T) {
 	}
 
 	pass := func(next http.Handler) http.Handler { return next }
-	mux := newMuxWith(t, newStore(t), pass, recorder, pass)
+	mux := newMuxWith(t, newStore(t), pass, recorder, pass, pass)
 
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/invitations/accept",
 		strings.NewReader(`{"token":"t","name":"Budi","password":"sandi-yang-cukup-panjang"}`))
@@ -844,7 +845,7 @@ func TestAskingForAResetNeedsNoSession(t *testing.T) {
 	}
 
 	pass := func(next http.Handler) http.Handler { return next }
-	mux := newMuxWith(t, newStore(t), pass, pass, recorder)
+	mux := newMuxWith(t, newStore(t), pass, pass, recorder, pass)
 
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/password/reset",
 		strings.NewReader(`{"email":"budi@example.test"}`))
@@ -874,7 +875,7 @@ func TestTheResetLimitRunsBeforeTheHandler(t *testing.T) {
 	}
 
 	pass := func(next http.Handler) http.Handler { return next }
-	mux := newMuxWith(t, newStore(t), pass, pass, recorder)
+	mux := newMuxWith(t, newStore(t), pass, pass, recorder, pass)
 
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/password/reset",
 		strings.NewReader(`{"email":"budi@example.test"}`))
