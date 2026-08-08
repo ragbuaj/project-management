@@ -27,6 +27,12 @@ func valid() map[string]string {
 		"APP_BASE_URL": "http://localhost:8080",
 		"DATABASE_URL": "postgres://pm:redacted-in-tests@localhost:5432/pm",
 		"REDIS_URL":    "redis://localhost:6379",
+
+		// No credentials: this is the local Mailpit, which accepts none. That
+		// they may be absent here and may not in production is what
+		// TestSMTPCredentialsAreRequiredOnlyInProduction is about.
+		"SMTP_HOST": "localhost",
+		"SMTP_FROM": "Project Management <no-reply@pm.example.test>",
 	}
 }
 
@@ -83,8 +89,10 @@ func TestLoadValid(t *testing.T) {
 		},
 		"production over https is accepted": {
 			env: with(map[string]string{
-				"APP_ENV":      "production",
-				"APP_BASE_URL": "https://pm.example.com",
+				"APP_ENV":       "production",
+				"APP_BASE_URL":  "https://pm.example.com",
+				"SMTP_USERNAME": "pm",
+				"SMTP_PASSWORD": "redacted-in-tests",
 			}),
 			assert: func(t *testing.T, cfg config.Config) {
 				t.Helper()
@@ -245,6 +253,34 @@ func TestLoadInvalid(t *testing.T) {
 			env:  with(map[string]string{"REDIS_URL": "redis://"}),
 			want: []string{"REDIS_URL is invalid", "host"},
 		},
+		"SMTP_HOST absent": {
+			env:  with(map[string]string{"SMTP_HOST": ""}),
+			want: []string{"SMTP_HOST is required"},
+		},
+		"SMTP_FROM absent": {
+			env:  with(map[string]string{"SMTP_FROM": ""}),
+			want: []string{"SMTP_FROM is required"},
+		},
+		// A From nobody can parse is a message nobody can send, and the first
+		// time anyone finds out would be the first invitation.
+		"SMTP_FROM that is not an address": {
+			env:  with(map[string]string{"SMTP_FROM": "no-reply"}),
+			want: []string{"SMTP_FROM is invalid"},
+		},
+		"SMTP_PORT that is not a port": {
+			env:  with(map[string]string{"SMTP_PORT": "70000"}),
+			want: []string{"SMTP_PORT is invalid", "between 1 and 65535"},
+		},
+		// mail.NewSMTP refuses the half-pair anyway. Refusing it at start-up
+		// beats refusing it at the first invitation.
+		"SMTP_USERNAME without SMTP_PASSWORD": {
+			env:  with(map[string]string{"SMTP_USERNAME": "pm"}),
+			want: []string{"SMTP_USERNAME and SMTP_PASSWORD come together"},
+		},
+		"SMTP_PASSWORD without SMTP_USERNAME": {
+			env:  with(map[string]string{"SMTP_PASSWORD": "redacted-in-tests"}),
+			want: []string{"SMTP_USERNAME and SMTP_PASSWORD come together"},
+		},
 		"DATABASE_MAX_CONNS zero": {
 			env:  with(map[string]string{"DATABASE_MAX_CONNS": "0"}),
 			want: []string{"DATABASE_MAX_CONNS is invalid"},
@@ -385,5 +421,104 @@ func TestAMalformedTrustedProxyStopsStartUp(t *testing.T) {
 		if !errors.Is(err, config.ErrInvalid) {
 			t.Errorf("TRUSTED_PROXIES=%q loaded with err = %v", raw, err)
 		}
+	}
+}
+
+// The rule the owner decided on 2026-08-08. docs/environments.md had written
+// both as required everywhere, which is wrong in the way that same document
+// warns about: Mailpit accepts neither, so demanding them locally produces a
+// throwaway value, and throwaway values end up in production.
+//
+// It is the shape APP_BASE_URL already has — a rule that only tightens where
+// it means something.
+func TestSMTPCredentialsAreRequiredOnlyInProduction(t *testing.T) {
+	t.Parallel()
+
+	t.Run("absent is fine locally", func(t *testing.T) {
+		t.Parallel()
+
+		cfg, err := config.Load(lookupFrom(valid()))
+		if err != nil {
+			t.Fatalf("Load(): %v", err)
+		}
+
+		if cfg.SMTP.Username != "" || cfg.SMTP.Password != "" {
+			t.Errorf("credentials were invented: %q", cfg.SMTP.Username)
+		}
+	})
+
+	t.Run("absent is refused in production", func(t *testing.T) {
+		t.Parallel()
+
+		env := with(map[string]string{
+			"APP_ENV":      "production",
+			"APP_BASE_URL": "https://pm.example.com",
+		})
+
+		_, err := config.Load(lookupFrom(env))
+		if err == nil {
+			t.Fatal("Load() = nil, want an error")
+		}
+
+		for _, want := range []string{"SMTP_USERNAME is required", "SMTP_PASSWORD is required"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %v does not mention %q", err, want)
+			}
+		}
+	})
+}
+
+// SMTP_PASSWORD is a secret, and a start-up error is the first thing anyone
+// pastes into a chat window when an application refuses to boot.
+func TestLoadNeverEchoesTheSMTPPassword(t *testing.T) {
+	t.Parallel()
+
+	const password = "correct-horse-battery-staple"
+
+	// A configuration that fails for an unrelated reason, so the whole error
+	// is built and every variable gets its chance to appear in it.
+	broken := with(map[string]string{
+		"SMTP_PASSWORD": password,
+		"SMTP_PORT":     "70000",
+	})
+
+	_, err := config.Load(lookupFrom(broken))
+	if err == nil {
+		t.Fatal("Load() = nil, want an error")
+	}
+
+	if strings.Contains(err.Error(), password) {
+		t.Fatalf("the error message leaks the password: %v", err)
+	}
+}
+
+// The port most providers want for submission over STARTTLS. Mailpit listens
+// on 1025 and has to say so, which is what makes this a default rather than a
+// constant.
+func TestSMTPPortDefaultsToSubmission(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Load(lookupFrom(valid()))
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+
+	if cfg.SMTP.Port != 587 {
+		t.Errorf("SMTP.Port = %d, want 587", cfg.SMTP.Port)
+	}
+}
+
+// A display name in SMTP_FROM is what a person sees in their inbox, and
+// dropping it would make every message come from a bare address.
+func TestSMTPFromKeepsItsDisplayName(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Load(lookupFrom(valid()))
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+
+	if cfg.SMTP.From.Name != "Project Management" || cfg.SMTP.From.Address != "no-reply@pm.example.test" {
+		t.Errorf("SMTP.From = %+v, want the name and the address kept apart", cfg.SMTP.From)
 	}
 }

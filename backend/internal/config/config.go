@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	netmail "net/mail"
 	"net/netip"
 	"net/url"
 	"strconv"
@@ -93,7 +94,33 @@ type Config struct {
 	// whatever client address they liked, and every rate limit in the
 	// application would be one header away from useless.
 	TrustedProxies httpx.TrustedProxies
+
+	SMTP SMTP
 }
+
+// SMTP is what the mail sender is built from.
+//
+// Nothing here is validated beyond its shape. Whether the server answers is a
+// run-time question, and a mail server that is down must not stop this
+// application from starting: every part of it that is not mail still works.
+type SMTP struct {
+	Host string
+	Port int
+	// From is the address the installation sends as, parsed so that a
+	// malformed value is a start-up failure rather than a message nobody can
+	// send. A display name is accepted: "Project Management <no-reply@…>".
+	From netmail.Address
+
+	// Username and Password are empty when the server wants no credentials.
+	// See requireSMTPCredentials for when that is allowed.
+	Username string
+	Password string
+}
+
+// defaultSMTPPort is submission over STARTTLS, which is what every provider
+// wants and what mail.SMTP is built to speak. Mailpit listens on 1025 and has
+// to say so.
+const defaultSMTPPort = 587
 
 // Lookup reads one environment variable. os.LookupEnv satisfies it. It is
 // passed in so loading can be tested without touching the process environment.
@@ -170,6 +197,12 @@ func Load(lookup Lookup) (Config, error) {
 		cfg.RedisURL = rawRedis
 	}
 
+	if smtp, errs := loadSMTP(lookup, cfg.Env); len(errs) > 0 {
+		problems = append(problems, errs...)
+	} else {
+		cfg.SMTP = smtp
+	}
+
 	if trusted, err := parseTrustedProxies(value(lookup, "TRUSTED_PROXIES", "")); err != nil {
 		problems = append(problems, err)
 	} else {
@@ -191,6 +224,58 @@ func Load(lookup Lookup) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// loadSMTP reads the mail settings, collecting every problem rather than
+// stopping at the first for the same reason Load does.
+//
+// SMTP_USERNAME and SMTP_PASSWORD are required in production and optional
+// locally. docs/environments.md wrote them as required everywhere, and that was
+// wrong in the way that document itself warns about: Mailpit accepts neither,
+// so demanding them locally produces a throwaway value, and throwaway values
+// end up in production. This is the same shape APP_BASE_URL already has — a
+// rule that only tightens where it means something (owner's decision,
+// 2026-08-08).
+func loadSMTP(lookup Lookup, env Env) (SMTP, []error) {
+	var (
+		smtp     SMTP
+		problems []error
+	)
+
+	if smtp.Host = value(lookup, "SMTP_HOST", ""); smtp.Host == "" {
+		problems = append(problems, missing("SMTP_HOST"))
+	}
+
+	rawPort := value(lookup, "SMTP_PORT", strconv.Itoa(defaultSMTPPort))
+	if n, err := strconv.Atoi(rawPort); err != nil || n <= 0 || n > 65535 {
+		problems = append(problems, invalid("SMTP_PORT", rawPort, "expected a port between 1 and 65535"))
+	} else {
+		smtp.Port = n
+	}
+
+	if rawFrom := value(lookup, "SMTP_FROM", ""); rawFrom == "" {
+		problems = append(problems, missing("SMTP_FROM"))
+	} else if from, err := netmail.ParseAddress(rawFrom); err != nil {
+		problems = append(problems, invalid("SMTP_FROM", rawFrom, "expected an e-mail address"))
+	} else {
+		smtp.From = *from
+	}
+
+	smtp.Username = value(lookup, "SMTP_USERNAME", "")
+	smtp.Password = value(lookup, "SMTP_PASSWORD", "")
+
+	// One without the other is a mistake in every environment: mail.NewSMTP
+	// refuses the pair anyway, and finding it at start-up beats finding it the
+	// first time somebody is invited.
+	if (smtp.Username == "") != (smtp.Password == "") {
+		problems = append(problems, errors.New("SMTP_USERNAME and SMTP_PASSWORD come together: set both or neither"))
+	} else if smtp.Username == "" && env == EnvProduction {
+		problems = append(problems,
+			missing("SMTP_USERNAME"),
+			missing("SMTP_PASSWORD"))
+	}
+
+	return smtp, problems
 }
 
 // validateDatabaseURL checks the shape without ever echoing the value, and

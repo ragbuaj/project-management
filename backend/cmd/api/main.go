@@ -13,8 +13,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/ragbuaj/project-management/backend/internal/config"
 	"github.com/ragbuaj/project-management/backend/internal/httpx"
+	"github.com/ragbuaj/project-management/backend/internal/mail"
 	identityhttp "github.com/ragbuaj/project-management/backend/internal/modules/identity/handler"
 	identityrepo "github.com/ragbuaj/project-management/backend/internal/modules/identity/repository"
 	identityroute "github.com/ragbuaj/project-management/backend/internal/modules/identity/route"
@@ -93,10 +96,34 @@ func run() error {
 	sessions := identitysvc.NewSessions(queries, log, time.Now)
 	guard := loginGuard(rdb, log)
 
+	// Contacts nothing: a mail server that is down must not stop this
+	// application from starting, because every part of it that is not mail
+	// still works.
+	sender, err := mail.NewSMTP(mail.Options{
+		Host:     cfg.SMTP.Host,
+		Port:     cfg.SMTP.Port,
+		From:     cfg.SMTP.From,
+		Username: cfg.SMTP.Username,
+		Password: cfg.SMTP.Password,
+		// Mailpit speaks neither STARTTLS nor AUTH. Tied to APP_ENV rather than
+		// to a variable of its own, so that no separate switch can be set wrong
+		// in production — the same reason the Secure cookie attribute hangs off
+		// it.
+		AllowUnencrypted: cfg.Env == config.EnvLocal,
+	})
+	if err != nil {
+		return fmt.Errorf("smtp: %w", err)
+	}
+
+	invitations := identitysvc.NewInvitations(inTx(pool), sender, cfg.BaseURL, log, time.Now)
+
 	mux := http.NewServeMux()
 	identityroute.Register(mux,
 		identityhttp.NewAuth(credentials, sessions, guard, cfg.TrustedProxies, log),
-		sessions, log)
+		identityhttp.NewInvitations(invitations, log),
+		sessions,
+		inviteLimit(rdb, log),
+		log)
 
 	mux.Handle("GET /healthz", httpx.Health())
 	mux.Handle("GET /readyz", httpx.Ready(log, config.ReadyTimeout, httpx.ReadyCheck{
@@ -125,6 +152,64 @@ func run() error {
 	)
 
 	return httpx.Serve(ctx, srv, ln, config.ShutdownTimeout, log)
+}
+
+// inTx gives the identity services their transaction boundary.
+//
+// The boundary belongs to the service layer (ADR-0008), but pgx does not: the
+// service takes a function, which is what keeps it testable with an ordinary
+// fake instead of something that has to impersonate pgx.Tx. Opening the
+// transaction is this file's job because this file is where the pool lives.
+func inTx(pool *pgxpool.Pool) identitysvc.InTx {
+	return func(ctx context.Context, fn func(identitysvc.InvitationStore) error) error {
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("begin: %w", err)
+		}
+
+		// Runs after a successful commit too, where it is a no-op. It is the
+		// only thing that releases the connection when fn panics.
+		defer func() { _ = tx.Rollback(ctx) }()
+
+		if err := fn(identityrepo.New(tx)); err != nil {
+			return err
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit: %w", err)
+		}
+
+		return nil
+	}
+}
+
+// inviteLimit is the rate limit ADR-0005 §131 asks for on invitations.
+//
+// Keyed by the caller's account rather than by address: only the owner reaches
+// this endpoint, so an address bucket would be one bucket for one person and a
+// second name for the same count. It fails **open** — docs/nfr.md keeps
+// fail-closed for the authentication endpoints, where turning the guard off is
+// worse than refusing for a while, and an owner who cannot invite anybody
+// because Redis is down is the opposite trade.
+//
+// A request with no session keys nothing and is not counted; the guard behind
+// this refuses it anyway.
+func inviteLimit(rdb *redis.Client, log *slog.Logger) httpx.Middleware {
+	limiter := redis.NewLayered(rdb,
+		redis.Tier{Limit: 20, Window: time.Hour},
+		redis.Tier{Limit: 100, Window: 24 * time.Hour},
+	)
+
+	key := func(r *http.Request) string {
+		who, ok := identityhttp.CallerFrom(r.Context())
+		if !ok {
+			return ""
+		}
+
+		return "invite:" + who.UserID
+	}
+
+	return httpx.RateLimit(limiter, key, httpx.FailOpen, log)
 }
 
 // loginGuard builds the three failure counters ADR-0010 asks for.

@@ -54,6 +54,7 @@ security:
 
 tags:
   - name: auth
+  - name: invitations
   - name: projects
   - name: boards
   - name: cards
@@ -225,6 +226,78 @@ paths:
           description: |
             Sesi tidak ada, **atau** sesi itu milik orang lain. Keduanya dijawab
             sama supaya tidak ada cara memastikan sebuah id sesi benar-benar ada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /invitations:
+    post:
+      tags: [invitations]
+      summary: Undang pegawai yang belum punya akun
+      description: |
+        **Hanya `owner`.** Pendaftaran mandiri adalah non-goal, jadi ini
+        satu-satunya cara sebuah akun pernah lahir, dan `docs/authorization.md`
+        menaruhnya di daftar tertutup hak yang dipegang di luar keanggotaan
+        ([ADR-0012](../adr/0012-peran-akun-dan-akses-owner.md)).
+
+        `role` di sini adalah peran **akun** yang akan dipakai saat akunnya
+        dibuat, bukan peran di dalam sebuah project. `owner` ditolak dengan
+        menyebut namanya: owner hanya ada satu, dan akun itu yang pertama, bukan
+        yang diundang.
+
+        Orang yang **sudah** punya akun tidak diundang — ia ditambahkan langsung
+        ke folder atau project, tanpa persetujuan. Alamat yang sudah terpakai
+        karena itu dijawab `409`.
+
+        Mengundang ulang alamat yang sama **menutup tautan sebelumnya**. Satu
+        alamat tidak pernah punya dua tautan hidup.
+
+        Tautannya ada di email dan tidak di mana pun lagi. Response ini tidak
+        memuat token, dan tidak akan pernah — mengirimnya ulang berarti membuat
+        tautan baru.
+
+        Berbatas: 20 undangan per jam dan 100 per hari, per akun pengundang
+        ([ADR-0005](../adr/0005-autentikasi-sesi-cookie.md), ADR-0010).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+                role:
+                  type: string
+                  enum: [maintainer, contributor, viewer]
+                  description: Peran akun. `owner` sengaja tidak ada di daftar ini.
+      responses:
+        '201':
+          description: Undangan tercatat dan tautannya terkirim.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invitation' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: |
+            Alamat itu sudah punya akun. Bukan risiko enumerasi seperti di
+            `/auth/login`: yang melihat jawaban ini hanya `owner`, dan ia yang
+            membuat setiap akun yang ada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500':
+          description: |
+            Termasuk kasus **undangan tercatat tapi emailnya gagal terkirim**.
+            Pesannya menyebutkan keduanya dan apa yang harus dilakukan: undang
+            ulang, yang menutup baris sebelumnya dan mengirim tautan baru.
+
+            Bukan `201`, karena `docs/nfr.md` menolak kegagalan pengiriman
+            ditelan — undangan yang tidak diterima siapa pun bukan undangan, dan
+            `201` akan membuat owner menunggu pegawai yang tidak pernah dikabari.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -728,6 +801,31 @@ components:
             Benar untuk sesi yang mengirim permintaan ini, supaya antarmuka bisa
             menandainya "perangkat ini" dan memperingatkan sebelum seseorang
             mengeluarkan dirinya sendiri.
+
+    Invitation:
+      description: |
+        Undangan yang baru dibuat, seperti yang dilihat pengundangnya.
+
+        **Tidak memuat token maupun digest-nya, dan tidak akan pernah.** Token
+        itu ada satu kali, di tautan yang berangkat lewat email, dan tidak
+        pernah lagi — bahkan owner yang mengirimnya tidak bisa membacanya
+        kembali. Justru itu yang membuat digest yang tersimpan ada gunanya.
+      type: object
+      required: [id, email, role, expires_at]
+      properties:
+        id:    { type: string, format: uuid }
+        email: { type: string, format: email }
+        role:
+          type: string
+          enum: [maintainer, contributor, viewer]
+          description: Peran akun yang akan dipakai saat akunnya dibuat.
+        expires_at:
+          type: string
+          format: date-time
+          description: |
+            Tujuh hari sejak dibuat. Cukup panjang untuk bertahan melewati
+            undangan Jumat sore atau seminggu cuti, cukup pendek supaya tautan
+            yang terlanjur diteruskan ke grup obrolan berhenti bekerja.
 
     UserRef:
       description: Bentuk ringkas untuk disematkan. Tidak memuat email.
