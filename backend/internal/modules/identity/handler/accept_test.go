@@ -98,7 +98,7 @@ func acceptHandler(t *testing.T, store *acceptFake) (*identityhttp.Invitations, 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	service := identitysvc.NewInvitations(
-		func(_ context.Context, fn func(identitysvc.InvitationStore) error) error { return fn(store) },
+		func(_ context.Context, fn func(identitysvc.TxStore) error) error { return fn(store) },
 		mail.NewCapture(netmail.Address{Name: "PM", Address: "no-reply@pm.example.test"}),
 		base, log, time.Now)
 

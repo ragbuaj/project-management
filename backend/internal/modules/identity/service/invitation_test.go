@@ -154,7 +154,7 @@ func invitations(t *testing.T, store *inviteStore, commitErr error) (*identitysv
 		t.Fatalf("parse base url: %v", err)
 	}
 
-	inTx := func(_ context.Context, fn func(identitysvc.InvitationStore) error) error {
+	inTx := func(_ context.Context, fn func(identitysvc.TxStore) error) error {
 		if err := fn(store); err != nil {
 			return err
 		}
