@@ -203,12 +203,12 @@ func newMux(t *testing.T, s fullStore) *http.ServeMux {
 
 	pass := func(next http.Handler) http.Handler { return next }
 
-	return newMuxWith(t, s, pass, pass)
+	return newMuxWith(t, s, pass, pass, pass)
 }
 
-// newMuxWith is newMux with the invitation rate limit replaced, so a test can
-// see where in the chain it sits.
-func newMuxWith(t *testing.T, s fullStore, inviteLimit, acceptLimit httpx.Middleware) *http.ServeMux {
+// newMuxWith is newMux with the rate limits replaced, so a test can see where in
+// the chain each one sits.
+func newMuxWith(t *testing.T, s fullStore, inviteLimit, acceptLimit, resetRequestLimit httpx.Middleware) *http.ServeMux {
 	t.Helper()
 
 	log := slog.New(slog.DiscardHandler)
@@ -232,9 +232,11 @@ func newMuxWith(t *testing.T, s fullStore, inviteLimit, acceptLimit httpx.Middle
 		// sessions. A nil service is safe because every test here stops at the
 		// guard, and the one that does not asserts exactly that.
 		identityhttp.NewInvitations(nil, sessions, log),
+		identityhttp.NewPasswordResets(nil, log),
 		sessions,
 		inviteLimit,
 		acceptLimit,
+		resetRequestLimit,
 		log)
 
 	return mux
@@ -775,7 +777,8 @@ func TestTheInvitationLimitSeesTheCallerItIsKeyedBy(t *testing.T) {
 		})
 	}
 
-	mux := newMuxWith(t, newStore(t), recorder, func(next http.Handler) http.Handler { return next })
+	pass := func(next http.Handler) http.Handler { return next }
+	mux := newMuxWith(t, newStore(t), recorder, pass, pass)
 	cookie := signIn(t, mux)
 
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/invitations",
@@ -811,7 +814,7 @@ func TestRedeemingALinkNeedsNoSession(t *testing.T) {
 	}
 
 	pass := func(next http.Handler) http.Handler { return next }
-	mux := newMuxWith(t, newStore(t), pass, recorder)
+	mux := newMuxWith(t, newStore(t), pass, recorder, pass)
 
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/invitations/accept",
 		strings.NewReader(`{"token":"t","name":"Budi","password":"sandi-yang-cukup-panjang"}`))
@@ -822,4 +825,70 @@ func TestRedeemingALinkNeedsNoSession(t *testing.T) {
 	if !reached {
 		t.Fatalf("the endpoint was not reached without a session; status = %d", w.Code)
 	}
+}
+
+// Asking for a reset must **not** be behind the session guard: somebody who
+// cannot sign in is exactly who the endpoint is for. The recorder
+// short-circuits, so the nil reset service behind it is never touched.
+func TestAskingForAResetNeedsNoSession(t *testing.T) {
+	t.Parallel()
+
+	var reached bool
+
+	recorder := func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			reached = true
+
+			w.WriteHeader(http.StatusNoContent)
+		})
+	}
+
+	pass := func(next http.Handler) http.Handler { return next }
+	mux := newMuxWith(t, newStore(t), pass, pass, recorder)
+
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/password/reset",
+		strings.NewReader(`{"email":"budi@example.test"}`))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, r)
+
+	if !reached {
+		t.Fatalf("the endpoint was not reached without a session; status = %d", w.Code)
+	}
+}
+
+// The reset limit is keyed by address, so unlike the invitation limit it must
+// sit **outside** anything that resolves a session -- there is no session to
+// resolve. What matters is that it runs at all, before the handler.
+func TestTheResetLimitRunsBeforeTheHandler(t *testing.T) {
+	t.Parallel()
+
+	var order []string
+
+	recorder := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			order = append(order, "limit")
+
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	pass := func(next http.Handler) http.Handler { return next }
+	mux := newMuxWith(t, newStore(t), pass, pass, recorder)
+
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/password/reset",
+		strings.NewReader(`{"email":"budi@example.test"}`))
+
+	// The nil service behind it panics rather than answering, which is fine:
+	// what is asserted is that the limit ran first, and it either did or the
+	// slice is empty.
+	defer func() {
+		_ = recover()
+
+		if len(order) == 0 || order[0] != "limit" {
+			t.Errorf("middleware order was %v, want the limit first", order)
+		}
+	}()
+
+	mux.ServeHTTP(httptest.NewRecorder(), r)
 }
