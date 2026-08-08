@@ -28,6 +28,7 @@ func Register(
 	inviteLimit httpx.Middleware,
 	acceptLimit httpx.Middleware,
 	resetRequestLimit httpx.Middleware,
+	resetConfirmLimit httpx.Middleware,
 	log *slog.Logger,
 ) {
 	guard := RequireSession(sessions, log)
@@ -71,6 +72,17 @@ func Register(
 	// Both fail closed. An unauthenticated endpoint that causes mail to land in
 	// somebody else's inbox is the shape docs/nfr.md keeps fail-closed for.
 	mux.Handle("POST /api/v1/auth/password/reset", resetRequestLimit(http.HandlerFunc(resets.Request)))
+
+	// Also outside the guard, and for the stronger version of the same reason:
+	// every session this account had was deleted a moment before this endpoint
+	// answers. What stands in for a session is the token in the link, and it is
+	// single-use.
+	//
+	// One limit here rather than two. There is no account to key against until
+	// the token is read, and the token is a 32-byte random value nobody guesses
+	// — so what is worth bounding is the traffic, not the failures, which is the
+	// same call main.go makes for redeeming an invitation.
+	mux.Handle("POST /api/v1/auth/password/reset/confirm", resetConfirmLimit(http.HandlerFunc(resets.Confirm)))
 }
 
 // RequireSession resolves the session cookie and refuses the request when

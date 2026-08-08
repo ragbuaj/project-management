@@ -3,11 +3,13 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/ragbuaj/project-management/backend/internal/httpx"
+	identitydom "github.com/ragbuaj/project-management/backend/internal/modules/identity/domain"
 	identitysvc "github.com/ragbuaj/project-management/backend/internal/modules/identity/service"
 )
 
@@ -64,6 +66,93 @@ func (p *PasswordResets) Request(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusAccepted)
+}
+
+type confirmPasswordResetRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
+// Confirm sets the new password and ends every session the account had.
+//
+// No session is required to reach it, and none is issued by it. Redeeming an
+// invitation signs the new employee in because they have just chosen their first
+// password and there is nothing else they could be doing; a reset is different
+// on purpose (keputusan pemilik, 2026-08-08) — the caller signs in afterwards
+// with the password they just set, through the endpoint that counts failed
+// attempts.
+//
+// The session cookie is cleared even though the caller usually has none. Every
+// session for the account was deleted server-side a moment ago, so a browser
+// that still holds one holds a dead credential, and the next request would be a
+// 401 nobody could explain.
+func (p *PasswordResets) Confirm(w http.ResponseWriter, r *http.Request) {
+	var req confirmPasswordResetRequest
+
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxPasswordResetBody)).Decode(&req); err != nil {
+		httpx.WriteError(w, r, httpx.CodeValidationFailed, "Isi permintaan tidak bisa dibaca sebagai JSON.")
+
+		return
+	}
+
+	var missing []httpx.FieldError
+
+	for _, f := range []struct {
+		name  string
+		value string
+	}{
+		{"token", req.Token},
+		{"password", req.Password},
+	} {
+		if f.value == "" {
+			missing = append(missing, httpx.FieldError{Field: f.name, Code: "REQUIRED"})
+		}
+	}
+
+	if len(missing) > 0 {
+		httpx.WriteError(w, r, httpx.CodeValidationFailed, "Tautan dan sandi baru wajib diisi.", missing...)
+
+		return
+	}
+
+	if err := p.resets.Confirm(r.Context(), req.Token, req.Password); err != nil {
+		p.writeConfirmError(w, r, err)
+
+		return
+	}
+
+	clearSessionCookie(w)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// writeConfirmError turns the service's refusals into the contract's answers.
+//
+// The password rules are the deliberate exception to saying as little as
+// possible: they are something the caller can still fix, and a form that refuses
+// a password without saying why is a form nobody gets past. It is the same
+// exception /invitations/accept makes, for the same reason.
+func (p *PasswordResets) writeConfirmError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, identitysvc.ErrPasswordResetNotUsable):
+		// One answer to a link that was never issued, one that expired, one
+		// already used, one that is not shaped like a token, and one whose
+		// account has since been masked. The log knows which it was.
+		httpx.WriteError(w, r, httpx.CodeNotFound,
+			"Tautan ini tidak berlaku. Minta tautan baru lewat halaman lupa sandi.")
+
+	case errors.Is(err, identitydom.ErrPasswordTooShort):
+		httpx.WriteError(w, r, httpx.CodeValidationFailed,
+			fmt.Sprintf("Sandi minimal %d karakter.", identitydom.MinPasswordLength),
+			httpx.FieldError{Field: "password", Code: "TOO_SHORT"})
+
+	case errors.Is(err, identitydom.ErrPasswordTooLong):
+		httpx.WriteError(w, r, httpx.CodeValidationFailed,
+			fmt.Sprintf("Sandi maksimal %d byte.", identitydom.MaxPasswordLength),
+			httpx.FieldError{Field: "password", Code: "TOO_LONG"})
+
+	default:
+		httpx.WriteInternalError(w, r, p.log, err)
+	}
 }
 
 // writeRequestError turns the service's refusals into the contract's answers.
