@@ -1,6 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `0515217`.
+**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `96194d7`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -32,35 +32,37 @@ satu pemeriksaan keanggotaan, dengan pengecualian owner hidup di satu tempat.
 Yang tersisa dimulai dari Langkah 18 (undangan, reset password, daftar sesi),
 lalu seluruh frontend.
 
-**Langkah 18 sudah melewati lima dari delapan potongannya.** Potongan a
+**Langkah 18 sudah melewati enam dari delapan potongannya.** Potongan a
 menentukan alamat klien di belakang proxy; potongan b mengganti fixed window
 dengan sliding window berlapis; potongan c memasang tiga ember kegagalan —
 akun, alamat, jaringan — di depan `/auth/login`; potongan d memberi setiap akun
 daftar sesinya sendiri dan dua cara mengakhirinya; potongan e melahirkan
-`internal/mail`.
+`internal/mail`; potongan f menutup seluruh alur undangan, dari token sampai
+akun yang jadi.
 
 **`/auth/login` berbatas sejak PR #73**, dan itu menutup lubang tertua di
 repo ini: `httpx.RateLimit` ada sejak Langkah 13 dan tidak pernah dipasang,
 padahal ADR-0005 dan ADR-0010 mewajibkannya.
 
-Yang tersisa di Langkah 18 adalah potongan f sampai h — undangan, reset
-password, dan blocklist HIBP — dan ketiganya sekarang punya pengirim surel yang
-mereka butuhkan.
+Yang tersisa di Langkah 18 adalah potongan g dan h — reset password dan
+blocklist HIBP — dan keduanya sekarang punya pengirim surel yang mereka
+butuhkan, sudah terpasang di proses yang berjalan.
 
-**Potongan f sudah melewati tiga dari lima PR-nya:** token undangan (#82),
-empat query beserta cap sekali pakainya (#83), dan `Invitations.Create` yang
-mengundang lalu mengirim tautannya (#84). Yang tersisa: penukaran tautan
-(membuat akunnya), lalu endpoint, kontrak, `SMTP_*`, dan perakitan.
+**Potongan f tuntas dalam enam PR:** token undangan (#82), empat query beserta
+cap sekali pakainya (#83), `Invitations.Create` yang mengundang lalu mengirim
+tautannya (#84), `Invitations.Accept` yang menukar tautan jadi akun dalam satu
+transaksi (#86), lalu kedua endpoint beserta perakitannya (#87, #88).
 
-**`internal/mail` sudah punya pemanggil pertamanya sejak #84** —
-`identitysvc.Invitations` — tapi rantai itu belum tersambung ke proses yang
-berjalan, dan itu disengaja:
-`SMTP_*` belum dibaca `internal/config`, tidak ada pengirim yang dirakit di
-`cmd/api`, dan `identitysvc.InTx` belum punya implementasi sungguhan. Ketiganya
-menyusul di PR terakhir potongan f, saat endpoint-nya ada — merakit pengirim
-sebelum ada yang memanggilnya lewat HTTP berarti kode mati, dan mewajibkan
-`SMTP_*` sebelum ada yang membacanya adalah persis yang dilarang
-[environments.md](environments.md) dan komentar di kepala `internal/config`.
+**`internal/mail` sekarang tersambung ke proses yang berjalan.** Sejak #87
+`SMTP_*` dibaca `internal/config`, `mail.NewSMTP` dirakit di `cmd/api`, dan
+`identitysvc.InTx` punya implementasi yang membuka transaksi dari pool. Semuanya
+mendarat bersama endpoint yang memakainya, bukan lebih dulu — itu yang
+membedakannya dari kode mati dan dari variabel wajib yang tak dibaca siapa pun.
+
+**Aplikasi ini sekarang bisa melahirkan akun.** Owner memanggil
+`POST /invitations`, pegawainya mengikuti tautan ke `POST /invitations/accept`,
+memilih sandinya sendiri, dan langsung masuk. Sampai #87 satu-satunya akun yang
+bisa ada adalah yang ditanam manual ke database.
 
 **Yang belum punya implementasi:** antarmuka `authz.Memberships` sengaja tanpa
 implementasi sampai modul project lahir di Fase 1 — `project_members` dan
@@ -195,6 +197,22 @@ selesai lalu diam-diam menggantinya adalah cara catatan ini berbohong.
 > ini bukan angkanya, melainkan prosa di sekitarnya.** Skrip penghitung tidak
 > bisa memeriksa prosa, jadi setiap rekonsiliasi harus membaca ulang paragraf
 > ringkasan dan tabel potongan bersamaan.
+>
+> Rekonsiliasi kesembilan belas (2026-08-08, `96194d7`): dihitung dengan skrip
+> yang sama — 37 baris, 31 sub-langkah bernomor (22 `selesai`, 1 `sedang`,
+> 8 `belum`) ditambah 6 baris perubahan cakupan yang semuanya `selesai`,
+> ditambah 10 gerbang dokumen. Jadi **38 · 1 · 8** untuk **keenam** kalinya
+> berturut-turut. Tiga PR ter-merge (#86, #87, #88) dan ketiganya menutup
+> potongan f.
+>
+> Enam rekonsiliasi diam sementara tiga belas PR ter-merge. Yang bergerak
+> memang bukan angka Fase 0: satu baris tabel itu menampung delapan potongan
+> dan enam sudah selesai, tapi barisnya baru boleh berubah kalau kedelapan-
+> delapannya masuk. **Kali ini yang paling perlu diperiksa adalah prosanya, dan
+> ia memang sudah basi lagi** — paragraf ringkasan masih menulis `lima dari
+> delapan potongan` dan masih menjanjikan `SMTP_*` sebagai pekerjaan yang
+> menyusul, padahal #87 sudah memasangnya. Ketiga kalinya prosa yang sama
+> tertinggal di belakang tabelnya.
 
 ## Gerbang dokumen (sebelum baris kode pertama)
 
@@ -245,7 +263,7 @@ Gerbang dinyatakan lewat pada 2026-08-06 (PR #2).
 | — | Migration `00009` & `00010` — peran akun, dan pembuangan `is_owner` | selesai | Perubahan cakupan, lihat bawah; [ADR-0012](adr/0012-peran-akun-dan-akses-owner.md) | PR #59, #60, #63 (`98c5b4d`) |
 | — | Modul identity membawa peran akun, bukan `is_owner` | selesai | ADR-0012 | PR #61 |
 | 17 | `internal/authz` + table-driven test **tujuh** pola | selesai | Rencana Fase 0 §17, [authorization.md](authorization.md), ADR-0012 | PR #53, #54, #55, lalu **ditulis ulang** di #62 (`94d2303`) |
-| 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | sedang | Rencana Fase 0 §18, ADR-0009, ADR-0010 | 5 dari 8 potongan selesai, f sedang berjalan — a: #65 · b: #67, #68 · c: #69, #71, #72, #73 · d: #75, #76 · e: #78, #79, #80 · f (sebagian): #82, #83, #84 |
+| 18 | Undangan, reset password, daftar & cabut sesi + OpenAPI | sedang | Rencana Fase 0 §18, ADR-0009, ADR-0010 | 6 dari 8 potongan selesai — a: #65 · b: #67, #68 · c: #69, #71, #72, #73 · d: #75, #76 · e: #78, #79, #80 · f: #82, #83, #84, #86, #87, #88. Sisa: g (reset password), h (HIBP) |
 | 19 | **Gerbang manusia:** arah desain tertulis | belum | Rencana Fase 0 §19, `rules/15-ui-design.md` §2 | — |
 | 20 | Scaffold Vite + shadcn + token | belum | Rencana Fase 0 §20 | — |
 | 21 | Generate tipe dari OpenAPI + layar login empat state | belum | Rencana Fase 0 §21 | — |
@@ -342,7 +360,34 @@ yang **mengubah cara kerja**, bukan sejarah.
 - **Mutasi yang tidak kompilasi tidak menguji apa pun.** Melepas satu pemakaian
   sering membuat impor jadi tak terpakai; `go test` berhenti di build dan
   hasilnya terbaca seperti test yang lemah. Ini terjadi tiga kali dalam satu
-  sesi sebelum polanya disadari.
+  sesi sebelum polanya disadari, dan dua kali lagi sesudahnya.
+- **Rate limit yang dikunci ke pemanggil harus dipasang di *dalam* penjaga
+  sesi, bukan di luarnya.** Kuncinya diambil dari akun di context, dan akun itu
+  baru ada setelah penjaga menyelesaikannya. Dipasang di luar, setiap kunci
+  kosong, `httpx.RateLimit` melewatkan permintaan tanpa menghitung — dan
+  pembatas yang tidak menghitung apa pun **terlihat persis seperti pembatas yang
+  terpasang**. Ini kelas cacat yang sama dengan `httpx.RateLimit` yang tidak
+  pernah dipasang sampai PR #73, hanya lebih sulit dilihat. Ada test untuk
+  urutannya di `route_test.go`; komentar saja tidak cukup untuk klaim seperti
+  ini.
+- **Response yang statusnya sudah dikirim tidak bisa dibatalkan, dan itu
+  menyembunyikan mutasi.** Membuang `return` sesudah menulis error tidak
+  mengubah apa pun yang bisa dilihat sebuah test HTTP: header sudah terkirim,
+  jadi cookie yang ditambahkan sesudahnya hilang dan status tidak berubah.
+  Kodenya tetap salah — ia memanggil `Sessions.Issue` untuk akun yang tidak ada.
+  Yang menangkapnya adalah **efek sampingnya**: "penukaran yang ditolak tidak
+  membuat baris sesi". Untuk handler, memeriksa status dan body saja
+  meninggalkan celah sebesar satu `return`.
+- **Bentuk error `httpx` tidak bisa disusun ulang dari luar** — `errorBody` dan
+  `errorEnvelope` tidak di-export, disengaja. Endpoint yang ingin body 502
+  dengan muatan tambahan harus mengubah `httpx` lebih dulu. Di potongan f
+  jawabannya adalah tidak: kegagalan kirim dijawab 500 dengan amplop yang sama,
+  dan id undangannya masuk log. Satu bentuk response kedua untuk satu kasus
+  tidak sepadan.
+- **`emit_pointers_for_null_types` tidak berlaku untuk `timestamptz`.** Kolom
+  nullable tetap datang sebagai `pgtype.Timestamptz` dengan `.Valid`, bukan
+  `*time.Time`. Konversinya berhenti di lapisan service — domain tidak mengimpor
+  apa pun dari repository (ADR-0008).
 
 ## Langkah 18, dipotong sebelum ditulis
 
@@ -356,9 +401,17 @@ menutup lubang rate limit lebih dulu.
 | c | `/auth/login` berbatas: ember akun + IP + prefiks, gagal tertutup | selesai — #69 primitif, #71 kunci jaringan, #72 kebijakan, #73 pemasangan |
 | d | Daftar & cabut sesi + kontrak | selesai — #75 query & kebijakan, #76 endpoint & kontrak |
 | e | `internal/mail` — pengirim SMTP, dan penangkap untuk test | selesai — #78 render, #79 penangkap, #80 SMTP |
-| f | Undangan: owner membuat akun pegawai | sedang — 3 dari 5 PR: #82 token, #83 query, #84 pembuatan & pengiriman. Sisa: penukaran tautan, lalu endpoint + kontrak + `SMTP_*` + perakitan |
+| f | Undangan: owner membuat akun pegawai | selesai — 6 PR: #82 token, #83 query, #84 pembuatan & pengiriman, #86 penukaran, #87 `POST /invitations` + `SMTP_*` + perakitan, #88 `POST /invitations/accept` |
 | g | Reset password | belum |
 | h | Blocklist HIBP dengan k-anonymity, bertimeout, gagal terbuka | belum |
+
+Potongan f akhirnya butuh **enam** PR, bukan lima seperti yang diputuskan
+sebelum baris pertamanya. Yang meleset bukan jumlah pekerjaannya melainkan
+ukurannya: PR terakhir yang direncanakan berisi endpoint, kontrak, `SMTP_*`, dan
+perakitan sekaligus, dan itu jauh di atas 400 baris. Ia dipecah lagi
+**sebelum ditulis** — #87 plumbing dan endpoint pengundangan, #88 endpoint
+penukaran — jadi kali ini aturan "potong sebelum menulis" bertahan meski
+angkanya tidak.
 
 Yang perlu diingat saat melanjutkan:
 
@@ -390,12 +443,17 @@ Yang perlu diingat saat melanjutkan:
   ada di `DefaultLoginLimits` dan ditandai di komentarnya.
 - **Potongan g (reset password) butuh `LoginGuard` lagi, bukan
   `httpx.RateLimit`**: ia memverifikasi rahasia, jadi yang dihitung kegagalan.
-- **Potongan f yang merakit `internal/mail`, bukan potongan e.** `SMTP_*` belum
-  dibaca `internal/config` dan tidak ada pengirim di `cmd/api`, karena keduanya
-  tanpa konsumen adalah kode mati dan variabel wajib yang tak dibaca siapa pun.
-  Saat merakitnya, satu hal sudah menunggu jawaban: `SMTP_USERNAME` dan
-  `SMTP_PASSWORD` tertulis **wajib** di [environments.md](environments.md),
-  padahal Mailpit lokal tidak menerima keduanya.
+- **Potongan f yang merakit `internal/mail`, dan sudah dilakukan di #87.**
+  `SMTP_*` dibaca `internal/config`, `mail.NewSMTP` dirakit di `cmd/api`, dan
+  `identitysvc.InTx` membuka transaksi dari pool. Potongan g mewarisi ketiganya
+  dan tidak perlu merakit apa pun lagi — yang ia butuhkan hanya memanggil
+  pengirim yang sudah ada.
+- **Reset password menuntut tiga hal dari potongan f, dan ketiganya sudah ada:**
+  pengirim yang terpasang, `InTx` yang sungguhan, dan pola "kirim setelah commit"
+  yang harus dipilih ulang secara sadar. Yang belum ada dan hanya milik potongan
+  g: `password_resets` sudah punya tabelnya sejak `00001` tapi belum satu query
+  pun, dan `LoginGuard` — bukan `httpx.RateLimit` — yang menjaganya, karena ia
+  memverifikasi rahasia.
 - **`mail.Render` menolak karakter kendali, tidak membersihkannya.** `net/mail`
   sebenarnya menetralkan alamat yang disisipi dengan sendirinya — ia mengutip
   seluruhnya ke dalam local part — tapi yang keluar adalah header sah yang
@@ -443,7 +501,13 @@ menuntut cgo.
 | Penyedia SMTP untuk produksi. `SMTP_HOST` dan kawan-kawan sudah wajib di [environments.md](environments.md), tapi layanannya belum dipilih | 2026-08-08 | Langkah 25 (deploy), bukan Langkah 18 — Mailpit menutup seluruh pengembangan lokal |
 | Angka ember jaringan: 300 / 10 menit dan 2000 / hari. [ADR-0010](adr/0010-ip-klien-dan-rate-limit.md) tidak punya barisnya, jadi keduanya dipilih sendiri saat menulis `DefaultLoginLimits` | 2026-08-08 | Tidak memblokir apa pun — ia sudah berjalan dengan angka itu. Yang perlu diketahui: angka ini yang pertama dicurigai kalau ada yang terkunci tanpa sebab, dan mengubahnya cuma menyunting satu konstanta |
 | Jendela undangan tujuh hari. [ADR-0005](adr/0005-autentikasi-sesi-cookie.md) menetapkan jendela sesi dan diam soal undangan, jadi angkanya dipilih sendiri saat menulis `identitydom.InvitationWindow` | 2026-08-08 | Tidak memblokir apa pun — ia sudah berjalan dengan angka itu. Yang perlu diketahui: ia yang pertama dicurigai kalau ada pegawai yang harus minta undangan kedua, dan mengubahnya cuma menyunting satu konstanta |
-| Apakah `SMTP_USERNAME` dan `SMTP_PASSWORD` tetap **wajib** seperti tertulis di [environments.md](environments.md). Mailpit lokal tidak menerima keduanya, jadi mewajibkannya di `local` hanya melahirkan isian asal-asalan — yang justru dilarang dokumen yang sama. Bentuk yang tampaknya benar: wajib saat `APP_ENV=production`, opsional di `local`, sejalan dengan cara `APP_BASE_URL` sudah diperketat di produksi | 2026-08-08 | Potongan f, saat `internal/config` mulai membacanya. Tidak memblokir potongan e — `mail.NewSMTP` menerima opsinya sebagai argumen dan tidak menyentuh environment |
+| Angka batas kedua endpoint undangan: 20 per jam dan 100 per hari untuk mengundang, 10 per 10 menit dan 50 per jam untuk menukar. ADR-0005 §131 mewajibkan adanya batas dan diam soal angkanya | 2026-08-08 | Tidak memblokir apa pun — keduanya sudah berjalan. Yang perlu diketahui: batas pengundangan yang pertama dicurigai kalau owner tertahan saat onboarding satu tim sekaligus, dan keduanya ada di `cmd/api` sebagai dua konstanta |
+
+Pertanyaan `SMTP_USERNAME` dan `SMTP_PASSWORD` **tertutup pada 2026-08-08**:
+keduanya wajib saat `APP_ENV=production` dan opsional di `local`, sejalan dengan
+cara `APP_BASE_URL` sudah diperketat di produksi. Terpasang di PR #87, dan
+[environments.md](environments.md) ikut dibetulkan supaya dokumennya tidak
+menyimpang dari kodenya.
 
 
 Pertanyaan branch protection **tertutup pada 2026-08-07**. Repo dijadikan
@@ -557,6 +621,12 @@ native · pembuat laporan generik · SSO/SAML/LDAP · i18n
 | 2026-08-08 | **Jendela undangan tujuh hari dipilih di luar ADR** | [ADR-0005](adr/0005-autentikasi-sesi-cookie.md) menetapkan jendela sesi dan diam soal undangan. Cukup panjang untuk bertahan melewati undangan Jumat sore atau seminggu cuti, cukup pendek supaya tautan yang terlanjur diteruskan ke grup obrolan berhenti bekerja. **Ditandai di kodenya** sebagai angka yang belum disepakati | belum — dipilih sendiri, menunggu jawaban pemilik |
 | 2026-08-08 | **Undang ulang menutup tautan yang sudah terkirim** (`ExpireOpenInvitationsForEmail`) | Alternatifnya dua tautan hidup untuk satu alamat, dan alamat yang tidak sengaja diundang dua kali menyisakan pembuat akun cadangan di surel lama. Tidak ada di rencana Fase 0 §18; muncul saat memutuskan apa arti mengundang orang yang sama dua kali | ya — lewat merge PR #83 |
 | 2026-08-08 | Potongan f dipecah jadi **lima** PR (#82 token, #83 query, #84 pembuatan, lalu penukaran, lalu endpoint & perakitan) | Diputuskan sebelum baris pertamanya, kali ini benar-benar sebelum. Utuh, potongan ini jauh di atas 400 baris; masing-masing PR di atas berkisar 340–580 dengan mayoritas test | ya |
+| 2026-08-08 | Potongan f jadi **enam** PR: yang terakhir dipecah lagi menjadi #87 (perakitan + `POST /invitations`) dan #88 (`POST /invitations/accept`) | Rencana lima PR menaruh endpoint, kontrak, `SMTP_*`, dan perakitan dalam satu PR, dan itu jauh di atas 400 baris. Dipecah **sebelum ditulis**, bukan sesudah — yang meleset ukurannya, bukan aturannya | ya |
+| 2026-08-08 | **`SMTP_USERNAME` dan `SMTP_PASSWORD` wajib hanya saat `APP_ENV=production`**, bukan di semua environment seperti tertulis di [environments.md](environments.md) | Mailpit tidak menerima kredensial apa pun, jadi mewajibkannya di `local` hanya melahirkan isian asal-asalan — persis yang dilarang dokumen yang sama. Bentuknya sama dengan `APP_BASE_URL`: aturan yang hanya mengetat di tempat ia berarti. `environments.md` ikut dibetulkan | ya — keputusan pemilik, menutup pertanyaan yang terbuka sejak 2026-08-08 |
+| 2026-08-08 | `AllowUnencrypted` pada pengirim SMTP diikat ke `APP_ENV`, bukan ke variabel sendiri | Alasan yang sama dengan atribut `Secure` pada cookie sesi: saklar terpisah adalah saklar yang bisa salah disetel di produksi, dan yang dipertaruhkan di sini adalah pesan, penerima, dan tautan resetnya menyeberang jaringan terbaca | ya — lewat merge PR #87 |
+| 2026-08-08 | `CreateUser` mengembalikan `timezone` walau tidak menuliskannya | Ia satu-satunya kolom di query itu yang dipilih database, dan penukaran undangan menyerahkan akun barunya langsung ke pemanggil. Baris yang dibaca kembali dengan timezone kosong adalah query yang melaporkan nilai yang bukan yang tersimpan | ya — lewat merge PR #86 |
+| 2026-08-08 | **Menukar undangan langsung memulai sesi**, bukan mengarahkan ke halaman login | Orang yang baru saja membuktikan ia memegang tautannya dan memilih sandinya sendiri sudah melakukan semua yang diminta halaman login. Menyuruhnya mengetik ulang sandi yang ia setel sepuluh detik lalu tidak melindungi siapa pun. Dinyatakan di kontrak, bukan hanya di kode | ya — lewat merge PR #88 |
+| 2026-08-08 | Batas undangan (20/jam, 100/hari per pengundang) dan batas penukaran (10/10 menit, 50/jam per alamat) dipilih di luar ADR | [ADR-0005](adr/0005-autentikasi-sesi-cookie.md) §131 mewajibkan adanya batas dan diam soal angkanya, dan ADR-0010 hanya punya baris untuk login. Yang mengundang hanya owner, jadi 20/jam longgar untuk onboarding satu tim sekaligus ketat terhadap akun owner yang diambil alih. Penukaran **gagal tertutup**; pengundangan **gagal terbuka** — owner yang tidak bisa mengundang siapa pun karena Redis mati adalah pertukaran yang terbalik | belum — dipilih sendiri, menunggu jawaban pemilik |
 | 2026-08-08 | Potongan e dipecah jadi tiga PR (#78 render, #79 penangkap, #80 SMTP) | Utuh, ia 1.427 baris. Pemecahannya diputuskan setelah render dan penangkap ditulis, bukan sebelumnya — pelanggaran aturan "potong sebelum menulis" yang tidak berbiaya kali ini hanya karena ketiga berkas test-nya sudah berdiri sendiri. #78 tetap 561 baris dan #80 tetap 626, keduanya di atas target 400; memecahnya lebih jauh menyisakan validator atau separuh percakapan SMTP yang tidak dipanggil siapa pun | ya |
 | 2026-08-08 | **`internal/mail` mendarat tanpa satu pun pemanggil**, dan `SMTP_*` sengaja belum dibaca `internal/config` | Merakit pengirim di `cmd/api` sebelum ada yang mengirim adalah kode mati (`rules/00-core.md` §8), dan mewajibkan variabel environment yang tidak dibaca siapa pun adalah yang dilarang [environments.md](environments.md) dan komentar di kepala `internal/config`. Pola yang sama dengan `authz.Memberships` dan `httpx.Limiter`. Konsumen pertamanya potongan f | ya |
 | 2026-08-08 | Baris `internal/mail/` ditambahkan ke pohon paket di [architecture.md](architecture.md) | Preseden `internal/redis` pada 2026-08-07: pohon itu peta yang dibaca orang sebelum memutuskan di mana kode baru ditaruh, dan paket yang hilang darinya mengundang paket kedua di sebelahnya | ya — lewat merge PR #80 |
