@@ -82,7 +82,7 @@ func inviteHandler(t *testing.T, store *inviteFake) (*identityhttp.Invitations, 
 		func(ctx context.Context, fn func(identitysvc.InvitationStore) error) error { return fn(store) },
 		capture, base, log, time.Now)
 
-	return identityhttp.NewInvitations(service, log), capture
+	return identityhttp.NewInvitations(service, identitysvc.NewSessions(newStore(t), log, time.Now), log), capture
 }
 
 // invite posts an invitation as somebody with the given account role.
