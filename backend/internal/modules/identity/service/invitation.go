@@ -43,6 +43,11 @@ type TxStore interface {
 
 	ExpireOpenPasswordResetsForUser(ctx context.Context, userID string) (int64, error)
 	CreatePasswordReset(ctx context.Context, arg identityrepo.CreatePasswordResetParams) (identityrepo.CreatePasswordResetRow, error)
+
+	GetPasswordResetByTokenHash(ctx context.Context, tokenHash []byte) (identityrepo.GetPasswordResetByTokenHashRow, error)
+	UsePasswordReset(ctx context.Context, id string) (int64, error)
+	SetUserPasswordHash(ctx context.Context, arg identityrepo.SetUserPasswordHashParams) (identityrepo.SetUserPasswordHashRow, error)
+	DeleteAllSessionsForUser(ctx context.Context, userID string) (int64, error)
 }
 
 // Sender delivers one message. It is an interface here, and a mail.SMTP or a
