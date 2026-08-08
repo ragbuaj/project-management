@@ -23,9 +23,11 @@ func Register(
 	mux *http.ServeMux,
 	auth *identityhttp.Auth,
 	invitations *identityhttp.Invitations,
+	resets *identityhttp.PasswordResets,
 	sessions *identitysvc.Sessions,
 	inviteLimit httpx.Middleware,
 	acceptLimit httpx.Middleware,
+	resetRequestLimit httpx.Middleware,
 	log *slog.Logger,
 ) {
 	guard := RequireSession(sessions, log)
@@ -56,6 +58,19 @@ func Register(
 	// for a session is the token in the link, and it is single-use. The limit
 	// is keyed by address rather than by account for the same reason.
 	mux.Handle("POST /api/v1/invitations/accept", acceptLimit(http.HandlerFunc(invitations.Accept)))
+
+	// Deliberately **not** behind the guard: somebody who cannot sign in is
+	// exactly who this is for.
+	//
+	// Two limits apply and only one of them is here. ADR-0010 bounds this at
+	// three an hour per account and ten an hour per address; the address one is
+	// this middleware, and the account one lives inside the service, because the
+	// address it is keyed by arrives in the request body and a middleware that
+	// read it would consume it.
+	//
+	// Both fail closed. An unauthenticated endpoint that causes mail to land in
+	// somebody else's inbox is the shape docs/nfr.md keeps fail-closed for.
+	mux.Handle("POST /api/v1/auth/password/reset", resetRequestLimit(http.HandlerFunc(resets.Request)))
 }
 
 // RequireSession resolves the session cookie and refuses the request when

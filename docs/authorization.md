@@ -128,6 +128,7 @@ baris juga menuntut keanggotaan — langsung, atau lewat folder induknya.
 | Pengguna | nonaktifkan | — | — | — | — | — | Tidak boleh menonaktifkan diri sendiri |
 | Pengguna | ubah profil sendiri | — | — | milik | milik | milik | — |
 | Pengguna | ganti password | — | — | milik | milik | milik | Wajib memasukkan password lama |
+| Pengguna | minta reset sandi yang lupa | **ya** | ya | ya | ya | ya | Baris `guest` **satu-satunya** di tabel ini yang sengaja `ya`: yang tidak bisa masuk justru orang yang endpoint ini dibuat untuknya. Yang menggantikan otorisasi adalah token di tautan, yang hanya sampai ke kotak surel pemilik alamatnya. Jawabannya seragam apa pun hasilnya — lihat `docs/threat-model.md` |
 | Sesi | lihat & cabut | — | — | milik | milik | milik | Hanya sesinya sendiri, termasuk untuk `owner` |
 
 ### Board, kolom, status

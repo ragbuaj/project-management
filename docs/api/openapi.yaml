@@ -116,6 +116,62 @@ paths:
             cookie yang dipegangnya nyata.
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /auth/password/reset:
+    post:
+      tags: [auth]
+      summary: Minta tautan untuk mengatur ulang sandi yang terlupa
+      description: |
+        **Tanpa sesi.** Yang tidak bisa masuk justru orang yang endpoint ini
+        dibuat untuknya.
+
+        **Dijawab `202` apa pun hasilnya** — alamat punya akun, tidak punya
+        akun, atau surelnya gagal terkirim. Ini bentuk endpointnya, bukan
+        detailnya: `docs/threat-model.md` menutup enumerasi akun di jalur ini,
+        dan endpoint yang menjawab "alamat tidak terdaftar" adalah pemeriksa
+        alamat yang bisa dipanggil siapa pun tanpa masuk.
+
+        Karena itu **tidak ada `500` untuk kegagalan pengiriman**, berbeda dari
+        `POST /invitations` yang justru mewajibkannya. Di sana hanya `owner`
+        yang melihat jawabannya; di sini `500` hanya akan muncul kalau alamatnya
+        punya akun, yang mengembalikan enumerasi yang baru saja ditutup.
+
+        Sisa risiko yang diterima: **waktu jawab**. Alamat yang punya akun
+        menjalankan satu perjalanan SMTP, yang tidak punya langsung menjawab.
+        Menutupnya menunggu pengiriman keluar dari jalur permintaan
+        ([ADR-0002](../adr/0002-event-transport-outbox.md), Langkah 24).
+
+        Meminta lagi **menutup tautan sebelumnya**. Satu akun tidak pernah punya
+        dua tautan reset hidup.
+
+        Berbatas dua lapis ([ADR-0010](../adr/0010-ip-klien-dan-rate-limit.md)):
+        3 per jam per akun dan 10 per jam per alamat IP. Keduanya **gagal
+        tertutup**.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+      responses:
+        '202':
+          description: |
+            Permintaan diterima. Bodinya kosong, dan yang diterima memang
+            permintaannya — apakah ada pesan yang dikirim sengaja tidak
+            diberitahukan ke pemanggil.
+        '400':
+          description: |
+            `email` kosong atau bukan alamat. Ini satu-satunya penolakan yang
+            menyebutkan sesuatu, dan ia tidak menyatakan apa pun tentang
+            keberadaan akun.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
   /me:
     get:
       tags: [auth]

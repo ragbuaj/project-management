@@ -116,14 +116,17 @@ func run() error {
 	}
 
 	invitations := identitysvc.NewInvitations(inTx(pool), sender, cfg.BaseURL, log, time.Now)
+	resets := identitysvc.NewPasswordResets(inTx(pool), sender, resetAccountLimit(rdb), cfg.BaseURL, log, time.Now)
 
 	mux := http.NewServeMux()
 	identityroute.Register(mux,
 		identityhttp.NewAuth(credentials, sessions, guard, cfg.TrustedProxies, log),
 		identityhttp.NewInvitations(invitations, sessions, log),
+		identityhttp.NewPasswordResets(resets, log),
 		sessions,
 		inviteLimit(rdb, log),
 		acceptLimit(rdb, cfg.TrustedProxies, log),
+		resetRequestLimit(rdb, cfg.TrustedProxies, log),
 		log)
 
 	mux.Handle("GET /healthz", httpx.Health())
@@ -241,6 +244,42 @@ func acceptLimit(rdb *redis.Client, trusted httpx.TrustedProxies, log *slog.Logg
 		}
 
 		return "accept:" + httpx.RateLimitKey(addr)
+	}
+
+	return httpx.RateLimit(limiter, key, httpx.FailClosed, log)
+}
+
+// resetAccountLimit is the per-account half of what ADR-0010 asks for on a
+// password reset request: three an hour.
+//
+// It is handed to the service rather than mounted as middleware, because the
+// address it is keyed by arrives in the request body and a middleware that read
+// the body to find it would consume it. The service hashes the address before it
+// becomes a key, so Redis never holds a list of who has been asking.
+//
+// One tier, not two. The layered shape exists to catch somebody who waits
+// between rounds, and three an hour is already tight enough that there is
+// nothing to wait out.
+func resetAccountLimit(rdb *redis.Client) *redis.SlidingWindow {
+	return redis.NewLayered(rdb, redis.Tier{Limit: 3, Window: time.Hour})
+}
+
+// resetRequestLimit is the per-address half: ten an hour.
+//
+// It fails **closed**, like acceptLimit and for the same reason — an
+// unauthenticated endpoint, and this one causes mail to land in somebody else's
+// inbox. A caller whose address cannot be worked out shares one bucket rather
+// than skipping the limit.
+func resetRequestLimit(rdb *redis.Client, trusted httpx.TrustedProxies, log *slog.Logger) httpx.Middleware {
+	limiter := redis.NewLayered(rdb, redis.Tier{Limit: 10, Window: time.Hour})
+
+	key := func(r *http.Request) string {
+		addr, ok := httpx.ClientIP(r, trusted)
+		if !ok {
+			return "reset:unkeyable"
+		}
+
+		return "reset:" + httpx.RateLimitKey(addr)
 	}
 
 	return httpx.RateLimit(limiter, key, httpx.FailClosed, log)
