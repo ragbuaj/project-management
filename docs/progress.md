@@ -1,7 +1,6 @@
 # Progres — Project Management Tool
 
-**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `0159ab3`,
-ditambah #96 yang menunggu CI.
+**Terakhir direkonsiliasi:** 2026-08-08 terhadap `main` di commit `93375d2`.
 
 Sumber kebenaran progres adalah keadaan repo, bukan berkas ini. Sebuah item
 disebut `selesai` hanya kalau kodenya ada, gerbangnya hijau, **dan PR-nya
@@ -214,6 +213,14 @@ selesai lalu diam-diam menggantinya adalah cara catatan ini berbohong.
 > ditambah 10 gerbang dokumen. Jadi **38 · 1 · 8** untuk **keenam** kalinya
 > berturut-turut. Tiga PR ter-merge (#86, #87, #88) dan ketiganya menutup
 > potongan f.
+>
+> **Jangan tulis "menunggu CI" di baris rekonsiliasi.** Rekonsiliasi kedua puluh
+> menyebut `0159ab3` "ditambah #96 yang menunggu CI", dan kalimat itu jadi salah
+> dalam hitungan menit — #96 dan #97 ter-merge sebelum sesinya selesai.
+> Rekonsiliasi terjadi terhadap **satu commit yang sudah ada di `main`**; kalau
+> ada PR yang masih menggantung, tunggu atau sebut angkanya tanpa mengklaim
+> keadaannya. Ini kelas kesalahan yang sama dengan prosa basi di bawah, hanya
+> dengan umur simpan paling pendek yang pernah tercatat di berkas ini.
 >
 > Rekonsiliasi kedua puluh (2026-08-08, `0159ab3` + #96): dihitung dengan skrip
 > yang sama — 37 baris, 31 sub-langkah bernomor (22 `selesai`, 1 `sedang`,
