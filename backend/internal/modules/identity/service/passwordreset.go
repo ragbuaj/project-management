@@ -28,6 +28,18 @@ type Limiter interface {
 	Allow(ctx context.Context, key string) (allowed bool, retryAfter time.Duration, err error)
 }
 
+// ErrPasswordResetNotUsable is the one answer to a link that was never issued,
+// one that has expired, one that has already set a password, and one that is not
+// shaped like a token at all.
+//
+// They are four different facts and the caller must not be able to tell them
+// apart. The reason is not quite the invitation's: whoever holds this link
+// learns nothing about which addresses have accounts either way. It is that a
+// client which could tell "expired" from "never issued" could tell a token it
+// guessed wrong from one it guessed right and was merely too late on. The
+// difference belongs in the log.
+var ErrPasswordResetNotUsable = errors.New("this password reset link cannot be used")
+
 // PasswordResets sends the link somebody who has forgotten their password uses
 // to choose a new one.
 type PasswordResets struct {
@@ -160,6 +172,123 @@ func (s *PasswordResets) Request(ctx context.Context, email string) (retryAfter 
 	}
 
 	return 0, nil
+}
+
+// Confirm replaces the password the link belongs to and signs every device out.
+//
+// The stamp on the reset, the new hash, and the deletion of the sessions are one
+// transaction. A confirmation that loses the race stamps no row, returns before
+// the hash is written, and commits nothing — which matters more here than it
+// does for an invitation, because the loser would otherwise be setting the
+// password of an account that is already somebody's.
+//
+// Every session goes, including the ones belonging to whoever is doing this.
+// Somebody resetting a password after a scare is trying to get an account out of
+// another pair of hands, and a reset that left the old sessions alive would
+// leave it exactly where it was. It is also why this does not hand back a
+// session of its own: the caller signs in afterwards with the password they just
+// chose (keputusan pemilik, 2026-08-08), which is the deliberate difference from
+// redeeming an invitation.
+//
+// The password is hashed before the transaction opens. Argon2id is expensive on
+// purpose — 19 MiB and two passes, ADR-0005 — and a transaction held open across
+// it is a row lock held for the length of a deliberately slow computation.
+func (s *PasswordResets) Confirm(ctx context.Context, token, password string) error {
+	digest, err := identitydom.PasswordResetTokenDigest(token)
+	if err != nil {
+		// A link that is not shaped like one is answered exactly as an unknown
+		// link, and the shape is the only thing that has been learned.
+		s.log.InfoContext(ctx, "password reset refused",
+			slog.String("reason", "the token is malformed"))
+
+		return ErrPasswordResetNotUsable
+	}
+
+	// Whatever ADR-0009 rules on the password reaches the caller as it is: it is
+	// something they can still fix, and a form that refuses without saying why is
+	// a form nobody gets past. The breach blocklist joins this call in piece h.
+	hash, err := identitydom.HashPassword(password)
+	if err != nil {
+		return err
+	}
+
+	return s.inTx(ctx, func(store TxStore) error {
+		row, err := store.GetPasswordResetByTokenHash(ctx, digest)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				s.log.InfoContext(ctx, "password reset refused",
+					slog.String("reason", "no reset carries this token"))
+
+				return ErrPasswordResetNotUsable
+			}
+
+			return fmt.Errorf("get password reset: %w", err)
+		}
+
+		reset := identitydom.PasswordReset{
+			ID:        row.ID,
+			UserID:    row.UserID,
+			UsedAt:    timestamp(row.UsedAt),
+			CreatedAt: row.CreatedAt.Time,
+			ExpiresAt: row.ExpiresAt.Time,
+		}
+
+		if !reset.IsUsable(s.now()) {
+			// Here is where the facts the client is not told apart are kept
+			// apart, so that somebody debugging a link an employee cannot use can
+			// find out which of them it was.
+			s.log.InfoContext(ctx, "password reset refused",
+				slog.String("password_reset_id", reset.ID),
+				slog.Bool("already_used", reset.IsUsed()),
+				slog.Bool("expired", reset.IsExpired(s.now())))
+
+			return ErrPasswordResetNotUsable
+		}
+
+		// This, not the check above, is what makes the link single-use. Two
+		// confirmations arriving together both read an open row; only one of them
+		// updates a row here, and the other is told what everybody holding a
+		// spent link is told.
+		switch stamped, err := store.UsePasswordReset(ctx, reset.ID); {
+		case err != nil:
+			return fmt.Errorf("use password reset: %w", err)
+		case stamped == 0:
+			return ErrPasswordResetNotUsable
+		}
+
+		// The account comes from the reset row, never from the request. It is the
+		// whole of what the link stands for, and letting whoever holds it name an
+		// account would make one reset a way into any account.
+		user, err := store.SetUserPasswordHash(ctx, identityrepo.SetUserPasswordHashParams{
+			ID:           reset.UserID,
+			PasswordHash: hash,
+		})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// The account was masked between the link going out and being
+				// followed. Same answer as a spent link: there is nothing behind
+				// it either way.
+				s.log.InfoContext(ctx, "password reset refused",
+					slog.String("password_reset_id", reset.ID),
+					slog.String("reason", "the account is no longer live"))
+
+				return ErrPasswordResetNotUsable
+			}
+
+			return fmt.Errorf("set password: %w", err)
+		}
+
+		revoked, err := store.DeleteAllSessionsForUser(ctx, user.ID)
+		if err != nil {
+			return fmt.Errorf("revoke sessions: %w", err)
+		}
+
+		s.log.InfoContext(ctx, "password reset confirmed",
+			slog.String("user_id", user.ID),
+			slog.Int64("sessions_revoked", revoked))
+
+		return nil
+	})
 }
 
 // allowed asks the per-account bucket whether this address may ask again.

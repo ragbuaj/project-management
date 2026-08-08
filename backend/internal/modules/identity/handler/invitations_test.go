@@ -77,6 +77,20 @@ func (f *inviteFake) CreatePasswordReset(context.Context, identityrepo.CreatePas
 	return identityrepo.CreatePasswordResetRow{}, nil
 }
 
+func (f *inviteFake) GetPasswordResetByTokenHash(context.Context, []byte) (identityrepo.GetPasswordResetByTokenHashRow, error) {
+	return identityrepo.GetPasswordResetByTokenHashRow{}, pgx.ErrNoRows
+}
+
+func (f *inviteFake) UsePasswordReset(context.Context, string) (int64, error) { return 0, nil }
+
+func (f *inviteFake) SetUserPasswordHash(context.Context, identityrepo.SetUserPasswordHashParams) (identityrepo.SetUserPasswordHashRow, error) {
+	return identityrepo.SetUserPasswordHashRow{}, pgx.ErrNoRows
+}
+
+func (f *inviteFake) DeleteAllSessionsForUser(context.Context, string) (int64, error) {
+	return 0, nil
+}
+
 func inviteHandler(t *testing.T, store *inviteFake) (*identityhttp.Invitations, *mail.Capture) {
 	t.Helper()
 

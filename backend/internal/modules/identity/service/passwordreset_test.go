@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ragbuaj/project-management/backend/internal/mail"
 	identitydom "github.com/ragbuaj/project-management/backend/internal/modules/identity/domain"
@@ -35,6 +37,21 @@ type resetStore struct {
 	createErr error
 
 	created identityrepo.CreatePasswordResetParams
+
+	// The confirmation half. reset is nil when no row carries the token.
+	reset    *identityrepo.GetPasswordResetByTokenHashRow
+	resetErr error
+	// lostRace makes the stamp update no rows, which is what a confirmation
+	// that arrived second sees.
+	lostRace    bool
+	stampErr    error
+	accountGone bool
+	setErr      error
+	revokeErr   error
+
+	lookedUp   []byte
+	setHash    string
+	revokedFor string
 }
 
 func (s *resetStore) GetUserByEmail(_ context.Context, _ string) (identityrepo.GetUserByEmailRow, error) {
@@ -71,6 +88,64 @@ func (s *resetStore) CreatePasswordReset(_ context.Context, arg identityrepo.Cre
 		UserID:    arg.UserID,
 		ExpiresAt: arg.ExpiresAt,
 	}, nil
+}
+
+func (s *resetStore) GetPasswordResetByTokenHash(_ context.Context, tokenHash []byte) (identityrepo.GetPasswordResetByTokenHashRow, error) {
+	s.calls = append(s.calls, "read")
+	s.lookedUp = tokenHash
+
+	if s.resetErr != nil {
+		return identityrepo.GetPasswordResetByTokenHashRow{}, s.resetErr
+	}
+
+	if s.reset == nil {
+		return identityrepo.GetPasswordResetByTokenHashRow{}, pgx.ErrNoRows
+	}
+
+	return *s.reset, nil
+}
+
+func (s *resetStore) UsePasswordReset(_ context.Context, _ string) (int64, error) {
+	s.calls = append(s.calls, "stamp")
+
+	if s.stampErr != nil {
+		return 0, s.stampErr
+	}
+
+	if s.lostRace {
+		return 0, nil
+	}
+
+	return 1, nil
+}
+
+func (s *resetStore) SetUserPasswordHash(_ context.Context, arg identityrepo.SetUserPasswordHashParams) (identityrepo.SetUserPasswordHashRow, error) {
+	s.calls = append(s.calls, "set password")
+
+	if s.setErr != nil {
+		return identityrepo.SetUserPasswordHashRow{}, s.setErr
+	}
+
+	if s.accountGone {
+		return identityrepo.SetUserPasswordHashRow{}, pgx.ErrNoRows
+	}
+
+	s.setHash = arg.PasswordHash
+
+	return identityrepo.SetUserPasswordHashRow{
+		ID:       arg.ID,
+		Email:    "Budi@example.test",
+		Name:     "Budi",
+		Timezone: "Asia/Jakarta",
+		Role:     "contributor",
+	}, nil
+}
+
+func (s *resetStore) DeleteAllSessionsForUser(_ context.Context, userID string) (int64, error) {
+	s.calls = append(s.calls, "revoke sessions")
+	s.revokedFor = userID
+
+	return 3, s.revokeErr
 }
 
 // The invitation half. One transaction boundary means one store interface; no
@@ -123,7 +198,14 @@ func resets(t *testing.T, store *resetStore, limiter *fakeLimiter, commitErr err
 		t.Fatalf("parse base url: %v", err)
 	}
 
+	// "begin" is recorded so a test can tell work done inside the transaction
+	// from work done before it. Argon2id costs 19 MiB and two passes (ADR-0005),
+	// and a transaction held open across it is a row lock held for the length of
+	// a deliberately slow computation -- a property no assertion about the store's
+	// own calls can see, because the expensive call is not one of them.
 	inTx := func(_ context.Context, fn func(identitysvc.TxStore) error) error {
+		store.calls = append(store.calls, "begin")
+
 		if err := fn(store); err != nil {
 			return err
 		}
@@ -271,7 +353,7 @@ func TestAskingAgainClosesTheEarlierLinkBeforeWritingTheNewOne(t *testing.T) {
 		t.Fatalf("Request: %v", err)
 	}
 
-	if want := []string{"lookup", "expire", "create"}; !slices.Equal(store.calls, want) {
+	if want := []string{"begin", "lookup", "expire", "create"}; !slices.Equal(store.calls, want) {
 		t.Errorf("the store was asked to do %v, want %v", store.calls, want)
 	}
 }
@@ -436,5 +518,217 @@ func TestTheBucketKeyIsTheHashedAddressAndIgnoresCase(t *testing.T) {
 
 	if strings.Contains(limiter.keys[0], "budi") || strings.Contains(strings.ToLower(limiter.keys[0]), "example.test") {
 		t.Errorf("the key %q carries the address; rules/45-privacy keeps a list of who is asking out of Redis", limiter.keys[0])
+	}
+}
+
+// openReset mints a token and the reset row that carries it.
+func openReset(t *testing.T) (string, *identityrepo.GetPasswordResetByTokenHashRow) {
+	t.Helper()
+
+	token, _, err := identitydom.NewPasswordResetToken()
+	if err != nil {
+		t.Fatalf("new password reset token: %v", err)
+	}
+
+	return token, &identityrepo.GetPasswordResetByTokenHashRow{
+		ID:        "77777777-7777-7777-7777-777777777777",
+		UserID:    "66666666-6666-6666-6666-666666666666",
+		CreatedAt: pgtype.Timestamptz{Time: requestedAt, Valid: true},
+		ExpiresAt: pgtype.Timestamptz{Time: requestedAt.Add(identitydom.PasswordResetWindow), Valid: true},
+	}
+}
+
+const chosenAfterReset = "sandi-baru-yang-cukup-panjang"
+
+func TestConfirmingWritesTheNewHashAndSignsEveryDeviceOut(t *testing.T) {
+	t.Parallel()
+
+	token, reset := openReset(t)
+	store := &resetStore{reset: reset}
+
+	service, _ := resets(t, store, open(), nil)
+
+	if err := service.Confirm(t.Context(), token, chosenAfterReset); err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+
+	if store.setHash == "" {
+		t.Fatal("no hash was written")
+	}
+
+	if store.setHash == chosenAfterReset {
+		t.Error("the password was stored as it was typed rather than hashed")
+	}
+
+	if err := identitydom.VerifyPassword(store.setHash, chosenAfterReset); err != nil {
+		t.Errorf("the stored hash does not verify the chosen password: %v", err)
+	}
+
+	if store.revokedFor != reset.UserID {
+		t.Errorf("sessions were revoked for %q, want the account behind the link (%q)", store.revokedFor, reset.UserID)
+	}
+}
+
+// The order is the property, not the fact that all four happened. A password
+// written before the stamp would let the loser of a race overwrite the winner.
+func TestTheResetIsStampedBeforeThePasswordIsWritten(t *testing.T) {
+	t.Parallel()
+
+	token, reset := openReset(t)
+	store := &resetStore{reset: reset}
+
+	service, _ := resets(t, store, open(), nil)
+
+	if err := service.Confirm(t.Context(), token, chosenAfterReset); err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+
+	if want := []string{"begin", "read", "stamp", "set password", "revoke sessions"}; !slices.Equal(store.calls, want) {
+		t.Errorf("the store was asked to do %v, want %v", store.calls, want)
+	}
+}
+
+// Four different facts, one answer, and nothing written for any of them.
+func TestALinkThatCannotBeUsedIsOneAnswerAndChangesNothing(t *testing.T) {
+	t.Parallel()
+
+	usable, reset := openReset(t)
+
+	expired := *reset
+	expired.ExpiresAt = pgtype.Timestamptz{Time: requestedAt.Add(-time.Minute), Valid: true}
+
+	used := *reset
+	used.UsedAt = pgtype.Timestamptz{Time: requestedAt.Add(-time.Minute), Valid: true}
+
+	unknown, _ := openReset(t)
+
+	for name, tc := range map[string]struct {
+		token string
+		store *resetStore
+	}{
+		"malformed":            {token: "not-a-token", store: &resetStore{}},
+		"never issued":         {token: unknown, store: &resetStore{}},
+		"expired":              {token: usable, store: &resetStore{reset: &expired}},
+		"already used":         {token: usable, store: &resetStore{reset: &used}},
+		"lost the race":        {token: usable, store: &resetStore{reset: reset, lostRace: true}},
+		"account masked since": {token: usable, store: &resetStore{reset: reset, accountGone: true}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			service, _ := resets(t, tc.store, open(), nil)
+
+			if err := service.Confirm(t.Context(), tc.token, chosenAfterReset); !errors.Is(err, identitysvc.ErrPasswordResetNotUsable) {
+				t.Fatalf("Confirm = %v, want ErrPasswordResetNotUsable", err)
+			}
+
+			if tc.store.setHash != "" {
+				t.Error("a refused confirmation still wrote a password")
+			}
+
+			if tc.store.revokedFor != "" {
+				t.Error("a refused confirmation still revoked sessions")
+			}
+		})
+	}
+}
+
+// The password rules are the deliberate exception to saying as little as
+// possible: they are something the caller can still fix.
+func TestThePasswordRulesReachTheCallerAndStopTheLinkBeingSpent(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		password string
+		want     error
+	}{
+		"too short": {password: strings.Repeat("a", identitydom.MinPasswordLength-1), want: identitydom.ErrPasswordTooShort},
+		"too long":  {password: strings.Repeat("a", identitydom.MaxPasswordLength+1), want: identitydom.ErrPasswordTooLong},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			token, reset := openReset(t)
+			store := &resetStore{reset: reset}
+
+			service, _ := resets(t, store, open(), nil)
+
+			if err := service.Confirm(t.Context(), token, tc.password); !errors.Is(err, tc.want) {
+				t.Fatalf("Confirm = %v, want %v", err, tc.want)
+			}
+
+			// Two properties at once. The link must survive a password the
+			// caller can correct -- one typo must not cost a second round of
+			// e-mail -- and no transaction may be opened, because hashing is
+			// where the expensive work is and a row lock must not be held
+			// across it.
+			if len(store.calls) != 0 {
+				t.Errorf("the store was asked to do %v; a refused password must open no transaction and touch no link", store.calls)
+			}
+		})
+	}
+}
+
+// The digest is what is looked up, never the token. A store that received the
+// token itself would mean the column and the lookup had drifted apart.
+func TestConfirmationLooksUpTheDigestAndNotTheToken(t *testing.T) {
+	t.Parallel()
+
+	token, reset := openReset(t)
+	store := &resetStore{reset: reset}
+
+	service, _ := resets(t, store, open(), nil)
+
+	if err := service.Confirm(t.Context(), token, chosenAfterReset); err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+
+	want, err := identitydom.PasswordResetTokenDigest(token)
+	if err != nil {
+		t.Fatalf("PasswordResetTokenDigest: %v", err)
+	}
+
+	if !bytes.Equal(store.lookedUp, want) {
+		t.Error("the lookup did not use the digest of the presented token")
+	}
+
+	if strings.Contains(string(store.lookedUp), token) {
+		t.Error("the token itself reached the store")
+	}
+}
+
+// A confirmation that cannot revoke the old sessions must not commit the new
+// password either. Reporting success would tell somebody every other device is
+// signed out when it is not, which is the one thing they were promised.
+func TestAFailureToRevokeSessionsFailsTheWholeConfirmation(t *testing.T) {
+	t.Parallel()
+
+	token, reset := openReset(t)
+	store := &resetStore{reset: reset, revokeErr: errors.New("connection reset")}
+
+	service, _ := resets(t, store, open(), nil)
+
+	if err := service.Confirm(t.Context(), token, chosenAfterReset); err == nil {
+		t.Error("Confirm succeeded although the old sessions are still live")
+	}
+}
+
+// Confirming does not ask the request bucket anything. It verifies a 32-byte
+// random token, which nobody guesses, so what is worth bounding is the traffic
+// -- and that is the middleware's job, keyed by address.
+func TestConfirmingDoesNotSpendTheRequestBucket(t *testing.T) {
+	t.Parallel()
+
+	token, reset := openReset(t)
+	limiter := open()
+
+	service, _ := resets(t, &resetStore{reset: reset}, limiter, nil)
+
+	if err := service.Confirm(t.Context(), token, chosenAfterReset); err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+
+	if len(limiter.keys) != 0 {
+		t.Errorf("confirming consulted the per-account bucket with %v", limiter.keys)
 	}
 }

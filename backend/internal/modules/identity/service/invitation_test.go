@@ -160,6 +160,30 @@ func (s *inviteStore) CreatePasswordReset(_ context.Context, _ identityrepo.Crea
 	return identityrepo.CreatePasswordResetRow{}, nil
 }
 
+func (s *inviteStore) GetPasswordResetByTokenHash(_ context.Context, _ []byte) (identityrepo.GetPasswordResetByTokenHashRow, error) {
+	s.calls = append(s.calls, "read reset")
+
+	return identityrepo.GetPasswordResetByTokenHashRow{}, pgx.ErrNoRows
+}
+
+func (s *inviteStore) UsePasswordReset(_ context.Context, _ string) (int64, error) {
+	s.calls = append(s.calls, "stamp reset")
+
+	return 0, nil
+}
+
+func (s *inviteStore) SetUserPasswordHash(_ context.Context, _ identityrepo.SetUserPasswordHashParams) (identityrepo.SetUserPasswordHashRow, error) {
+	s.calls = append(s.calls, "set password")
+
+	return identityrepo.SetUserPasswordHashRow{}, pgx.ErrNoRows
+}
+
+func (s *inviteStore) DeleteAllSessionsForUser(_ context.Context, _ string) (int64, error) {
+	s.calls = append(s.calls, "revoke sessions")
+
+	return 0, nil
+}
+
 func invitations(t *testing.T, store *inviteStore, commitErr error) (*identitysvc.Invitations, *mail.Capture) {
 	t.Helper()
 

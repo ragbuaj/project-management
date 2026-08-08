@@ -2,13 +2,16 @@ package repository_test
 
 import (
 	"context"
+	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	identitydom "github.com/ragbuaj/project-management/backend/internal/modules/identity/domain"
 	identityrepo "github.com/ragbuaj/project-management/backend/internal/modules/identity/repository"
+	"github.com/ragbuaj/project-management/backend/internal/postgres"
 )
 
 func resetFor(t *testing.T, ctx context.Context, q *identityrepo.Queries, user string, seed byte, expires time.Time) identityrepo.CreatePasswordResetRow {
@@ -304,5 +307,106 @@ func TestDeletingEverySessionSparesNothingOfTheAccountAndNothingOfAnother(t *tes
 
 	if len(others) != 1 {
 		t.Errorf("another account has %d sessions left, want 1", len(others))
+	}
+}
+
+// The claim the whole confirmation step rests on, and the only way to test it is
+// to commit: two transactions cannot race inside one. What this writes is
+// removed again on the way out.
+//
+// Run sequentially, this passes even with the used_at guard removed -- which is
+// exactly how a test of atomicity looks like it is testing something when it is
+// not.
+func TestConcurrentConfirmationsLetExactlyOneThrough(t *testing.T) {
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("TEST_DATABASE_URL is not set; start compose or run this in CI")
+	}
+
+	if err := postgres.Migrate(context.Background(), url); err != nil {
+		t.Fatalf("Migrate(): %v", err)
+	}
+
+	pool, err := postgres.New(t.Context(), url, 10)
+	if err != nil {
+		t.Fatalf("New(): %v", err)
+	}
+
+	t.Cleanup(pool.Close)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	q := identityrepo.New(pool)
+
+	user, err := q.CreateUser(ctx, identityrepo.CreateUserParams{
+		Email:        "race-reset@example.test",
+		Name:         "Race",
+		PasswordHash: "argon2id$placeholder",
+		Role:         "contributor",
+	})
+	if err != nil {
+		t.Fatalf("CreateUser(): %v", err)
+	}
+
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM password_resets WHERE user_id = $1`, user.ID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id = $1`, user.ID)
+	})
+
+	reset := resetFor(t, ctx, q, user.ID, 27, time.Now().Add(time.Hour))
+
+	const confirmers = 20
+
+	var (
+		wg     sync.WaitGroup
+		mu     sync.Mutex
+		won    int
+		start  = make(chan struct{})
+		errsCh = make(chan error, confirmers)
+	)
+
+	for range confirmers {
+		wg.Go(func() {
+			<-start
+
+			tx, err := pool.Begin(ctx)
+			if err != nil {
+				errsCh <- err
+
+				return
+			}
+
+			defer func() { _ = tx.Rollback(ctx) }()
+
+			rows, err := identityrepo.New(tx).UsePasswordReset(ctx, reset.ID)
+			if err != nil {
+				errsCh <- err
+
+				return
+			}
+
+			if err := tx.Commit(ctx); err != nil {
+				errsCh <- err
+
+				return
+			}
+
+			mu.Lock()
+			won += int(rows)
+			mu.Unlock()
+		})
+	}
+
+	close(start)
+	wg.Wait()
+	close(errsCh)
+
+	for err := range errsCh {
+		t.Errorf("a confirmation failed outright: %v", err)
+	}
+
+	if won != 1 {
+		t.Errorf("%d of %d confirmations stamped the reset, want exactly 1", won, confirmers)
 	}
 }
