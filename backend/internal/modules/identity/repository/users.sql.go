@@ -19,7 +19,7 @@ VALUES (
     $3::text,
     $4::text
 )
-RETURNING id, email, name, role, created_at
+RETURNING id, email, name, timezone, role, created_at
 `
 
 type CreateUserParams struct {
@@ -33,6 +33,7 @@ type CreateUserRow struct {
 	ID        string
 	Email     string
 	Name      string
+	Timezone  string
 	Role      string
 	CreatedAt pgtype.Timestamptz
 }
@@ -40,6 +41,11 @@ type CreateUserRow struct {
 // The account role is chosen by whoever creates the account, never defaulted
 // here: users.role has a DEFAULT, and relying on it would mean a caller that
 // forgets to decide silently gets one (ADR-0012).
+//
+// timezone is returned although it is not written, because it is the one column
+// here the database chooses. Redeeming an invitation hands the new account
+// straight back to the caller, and a row read back with an empty timezone would
+// be this query reporting a value that is not what was stored.
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
 	row := q.db.QueryRow(ctx, createUser,
 		arg.Email,
@@ -52,6 +58,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 		&i.ID,
 		&i.Email,
 		&i.Name,
+		&i.Timezone,
 		&i.Role,
 		&i.CreatedAt,
 	)
